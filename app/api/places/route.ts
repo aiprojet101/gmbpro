@@ -71,14 +71,14 @@ export async function GET(req: NextRequest) {
 
   // Real Google Places Autocomplete
   try {
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=establishment&components=country:fr&language=fr&key=${apiKey}`
-    )
+    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=establishment&components=country:fr&language=fr&key=${apiKey}`
+    const res = await fetch(url)
     const data = await res.json()
 
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      console.error('Places API error:', data.status)
-      return NextResponse.json({ suggestions: getMockSuggestions(query) })
+      console.error('Places API error:', data.status, data.error_message || '')
+      // Return error info in dev so we can debug
+      return NextResponse.json({ suggestions: getMockSuggestions(query), _debug: { status: data.status, error: data.error_message } })
     }
 
     const suggestions = (data.predictions || []).slice(0, 5).map((p: { structured_formatting: { main_text: string; secondary_text: string }; place_id: string }) => ({
