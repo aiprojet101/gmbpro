@@ -5,6 +5,7 @@ import Link from "next/link";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { generateAudit } from "../lib/mock-score";
+import { supabase } from "../lib/supabase";
 
 /* ─── Types ─── */
 interface Suggestion {
@@ -234,6 +235,14 @@ export default function ScannerPage() {
             setProgress(100);
             await new Promise(r => setTimeout(r, 400));
             setAudit(data.audit);
+            // Save scan to Supabase (fire and forget)
+            supabase.from('scans').insert({
+              place_id: selectedPlaceId || null,
+              business_name: name,
+              city: city,
+              global_score: data.audit.globalScore,
+              email: null,
+            }).then(() => {});
             setScanning(false);
             setShowResults(true);
             return;
@@ -246,6 +255,13 @@ export default function ScannerPage() {
         await new Promise(r => setTimeout(r, 400));
         const result = generateAudit(name, city);
         setAudit(result);
+        supabase.from('scans').insert({
+          place_id: selectedPlaceId || null,
+          business_name: name,
+          city: city,
+          global_score: result.globalScore,
+          email: null,
+        }).then(() => {});
         setScanning(false);
         setShowResults(true);
       } catch {
@@ -255,6 +271,13 @@ export default function ScannerPage() {
         await new Promise(r => setTimeout(r, 400));
         const result = generateAudit(name, city);
         setAudit(result);
+        supabase.from('scans').insert({
+          place_id: selectedPlaceId || null,
+          business_name: name,
+          city: city,
+          global_score: result.globalScore,
+          email: null,
+        }).then(() => {});
         setScanning(false);
         setShowResults(true);
       }

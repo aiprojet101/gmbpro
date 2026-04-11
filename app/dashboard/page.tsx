@@ -2,9 +2,21 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { getUser, getClient, signOut } from '../lib/auth';
 
-// ── Mock Data ──────────────────────────────────────────────────────────────────
-const BUSINESS = { name: 'Restaurant Le Comptoir', city: 'Lyon 6e' };
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface ClientData {
+  id: string;
+  business_name: string;
+  city: string;
+  email: string;
+  plan: string;
+  contact_name: string;
+}
+
+// ── Mock Data (fallback until VPS workers populate real data) ─────────────────
+const BUSINESS_DEFAULT = { name: 'Mon etablissement', city: '' };
 
 const KPI = [
   { label: 'Score GmbPro', value: 67, unit: '/100', change: null, type: 'gauge' as const },
@@ -449,7 +461,13 @@ function ReportsTab() {
   );
 }
 
-function SettingsTab() {
+function SettingsTab({ client, onSignOut }: { client: ClientData | null; onSignOut: () => void }) {
+  const planLabels: Record<string, string> = {
+    starter: 'Starter — 29 euros (one-shot)',
+    pro: 'Pro — 39 euros/mois',
+    premium: 'Premium — 59 euros/mois',
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <h3 className="text-lg font-semibold text-[var(--text)]">Parametres</h3>
@@ -457,7 +475,12 @@ function SettingsTab() {
       <div className="glass-card p-6">
         <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Profil</h4>
         <div className="flex flex-col gap-4">
-          {[{ label: 'Nom', value: 'Jean Dupont' }, { label: 'Email', value: 'jean@lecomptoir-lyon.fr' }].map(f => (
+          {[
+            { label: 'Nom', value: client?.contact_name || client?.business_name || '—' },
+            { label: 'Email', value: client?.email || '—' },
+            { label: 'Etablissement', value: client?.business_name || '—' },
+            { label: 'Ville', value: client?.city || '—' },
+          ].map(f => (
             <div key={f.label}>
               <label className="block text-xs text-[var(--text-muted)] mb-1">{f.label}</label>
               <input type="text" defaultValue={f.value} className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm" readOnly />
@@ -471,9 +494,8 @@ function SettingsTab() {
         <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Abonnement</h4>
         <div className="flex items-center gap-3 mb-3">
           <span className="text-sm text-[var(--text)]">Forfait actuel :</span>
-          <span className="text-sm font-bold text-[var(--primary)]">Pro — 39 euros/mois</span>
+          <span className="text-sm font-bold text-[var(--primary)]">{planLabels[client?.plan || ''] || client?.plan || 'Aucun'}</span>
         </div>
-        <p className="text-xs text-[var(--text-muted)] mb-3">Prochain renouvellement : 15 juillet 2026</p>
         <button className="btn-outline text-sm !py-2">Changer de forfait</button>
       </div>
 
@@ -491,6 +513,15 @@ function SettingsTab() {
         </div>
       </div>
 
+      <div className="glass-card p-6">
+        <button
+          onClick={onSignOut}
+          className="text-sm text-red-400 border border-red-500/30 rounded-lg px-4 py-2 hover:bg-red-500/10 transition-colors cursor-pointer"
+        >
+          Deconnexion
+        </button>
+      </div>
+
       <div className="glass-card p-6 border-red-500/30">
         <h4 className="text-sm font-semibold text-red-400 mb-2">Zone dangereuse</h4>
         <p className="text-xs text-[var(--text-muted)] mb-3">Cette action est irreversible.</p>
@@ -505,8 +536,47 @@ function SettingsTab() {
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState('overview');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [client, setClient] = useState<ClientData | null>(null);
+  const [businessName, setBusinessName] = useState(BUSINESS_DEFAULT.name);
+  const [businessCity, setBusinessCity] = useState(BUSINESS_DEFAULT.city);
+
+  // Auth check + load client data
+  useEffect(() => {
+    (async () => {
+      const user = await getUser();
+      if (!user) {
+        router.replace('/connexion');
+        return;
+      }
+      const clientData = await getClient();
+      if (clientData) {
+        setClient(clientData);
+        setBusinessName(clientData.business_name || BUSINESS_DEFAULT.name);
+        setBusinessCity(clientData.city || BUSINESS_DEFAULT.city);
+      }
+      setLoading(false);
+    })();
+  }, [router]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace('/');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg)' }}>
+        <div className="text-center">
+          <div className="w-12 h-12 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-[var(--text-muted)]">Chargement...</p>
+        </div>
+      </div>
+    );
+  }
 
   const tabContent: Record<string, React.ReactNode> = {
     overview: <OverviewTab />,
@@ -515,8 +585,10 @@ export default function DashboardPage() {
     reviews: <ReviewsTab />,
     positions: <PositionsTab />,
     reports: <ReportsTab />,
-    settings: <SettingsTab />,
+    settings: <SettingsTab client={client} onSignOut={handleSignOut} />,
   };
+
+  const initials = (client?.contact_name || client?.business_name || 'U').charAt(0).toUpperCase();
 
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg)' }}>
@@ -559,8 +631,8 @@ export default function DashboardPage() {
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <div>
-              <p className="text-sm font-semibold text-[var(--text)]">{BUSINESS.name}</p>
-              <p className="text-xs text-[var(--text-muted)]">{BUSINESS.city}</p>
+              <p className="text-sm font-semibold text-[var(--text)]">{businessName}</p>
+              <p className="text-xs text-[var(--text-muted)]">{businessCity}</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -568,7 +640,7 @@ export default function DashboardPage() {
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-[var(--accent-warm)] rounded-full" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-sm font-bold text-white">J</div>
+            <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-sm font-bold text-white">{initials}</div>
           </div>
         </header>
 
