@@ -2,9 +2,47 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { supabase } from '../lib/supabase';
 
 export default function ConnexionPage() {
+  const router = useRouter();
   const [form, setForm] = useState({ email: '', password: '', remember: false });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.email || !form.password) { setError('Email et mot de passe requis.'); return; }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
+      });
+
+      if (authError) {
+        if (authError.message.includes('Invalid login')) {
+          setError('Email ou mot de passe incorrect.');
+        } else if (authError.message.includes('Email not confirmed')) {
+          setError('Veuillez confirmer votre email avant de vous connecter.');
+        } else {
+          setError(authError.message);
+        }
+        setLoading(false);
+        return;
+      }
+
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-20" style={{ background: 'var(--bg)' }}>
@@ -23,11 +61,11 @@ export default function ConnexionPage() {
         </div>
 
         <div className="glass-card p-8">
-          <form onSubmit={(e) => e.preventDefault()} className="flex flex-col gap-5">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div>
               <label className="block text-sm font-medium text-[var(--text-muted)] mb-1.5">Email</label>
               <input
-                type="email"
+                type="email" required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="contact@moncommerce.fr"
@@ -37,7 +75,7 @@ export default function ConnexionPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--text-muted)] mb-1.5">Mot de passe</label>
               <input
-                type="password"
+                type="password" required
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder="Votre mot de passe"
@@ -54,10 +92,15 @@ export default function ConnexionPage() {
                 />
                 <span className="text-sm text-[var(--text-muted)]">Se souvenir de moi</span>
               </label>
-              <button type="button" className="text-sm text-[var(--primary-light)] hover:underline">Mot de passe oublie ?</button>
+              <button type="button" className="text-sm text-[var(--primary-light)] hover:underline cursor-pointer">Mot de passe oublie ?</button>
             </div>
-            <button type="submit" className="btn-primary w-full justify-center text-base mt-2">
-              Se connecter
+            {error && (
+              <div className="text-sm text-[var(--accent-warm)] bg-[rgba(255,107,53,0.1)] px-4 py-3 rounded-xl">
+                {error}
+              </div>
+            )}
+            <button type="submit" disabled={loading} className="btn-primary w-full justify-center text-base mt-2 cursor-pointer disabled:opacity-50">
+              {loading ? 'Connexion en cours...' : 'Se connecter'}
             </button>
           </form>
         </div>

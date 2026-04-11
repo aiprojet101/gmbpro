@@ -2,10 +2,78 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { Metadata } from 'next';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+import { supabase } from '../lib/supabase';
 
-export default function InscriptionPage() {
-  const [form, setForm] = useState({ nom: '', email: '', password: '', ville: '', cgu: false });
+function InscriptionForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const planParam = searchParams.get('plan') || '';
+  const nameParam = searchParams.get('name') || '';
+  const cityParam = searchParams.get('city') || '';
+
+  const [form, setForm] = useState({ nom: nameParam, email: '', password: '', ville: cityParam, cgu: false });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.cgu) { setError('Vous devez accepter les CGU.'); return; }
+    if (!form.nom || !form.email || !form.password || !form.ville) { setError('Tous les champs sont requis.'); return; }
+    if (form.password.length < 8) { setError('Le mot de passe doit contenir au moins 8 caracteres.'); return; }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      // 1. Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: { business_name: form.nom, city: form.ville },
+        },
+      });
+
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          setError('Cet email est deja utilise. Connectez-vous ou utilisez un autre email.');
+        } else {
+          setError(authError.message);
+        }
+        setLoading(false);
+        return;
+      }
+
+      if (!authData.user) {
+        setError('Erreur lors de la creation du compte.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Create client row
+      const { error: clientError } = await supabase.from('clients').insert({
+        id: authData.user.id,
+        email: form.email,
+        business_name: form.nom,
+        city: form.ville,
+        plan: planParam || 'starter',
+      });
+
+      if (clientError) {
+        console.error('Client insert error:', clientError);
+        // Not blocking — user is created, we can fix client row later
+      }
+
+      // 3. Redirect to dashboard
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Une erreur est survenue.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-20" style={{ background: 'var(--bg)' }}>
@@ -24,11 +92,11 @@ export default function InscriptionPage() {
         </div>
 
         <div className="glass-card p-8">
-          <form onSubmit={(e) => e.preventDefault()} className="flex flex-col gap-5">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             <div>
               <label className="block text-sm font-medium text-[var(--text-muted)] mb-1.5">Nom de l&apos;etablissement</label>
               <input
-                type="text"
+                type="text" required
                 value={form.nom}
                 onChange={(e) => setForm({ ...form, nom: e.target.value })}
                 placeholder="Restaurant Le Comptoir"
@@ -38,7 +106,7 @@ export default function InscriptionPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--text-muted)] mb-1.5">Email</label>
               <input
-                type="email"
+                type="email" required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="contact@moncommerce.fr"
@@ -48,7 +116,7 @@ export default function InscriptionPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--text-muted)] mb-1.5">Mot de passe</label>
               <input
-                type="password"
+                type="password" required minLength={8}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
                 placeholder="8 caracteres minimum"
@@ -58,7 +126,7 @@ export default function InscriptionPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--text-muted)] mb-1.5">Ville</label>
               <input
-                type="text"
+                type="text" required
                 value={form.ville}
                 onChange={(e) => setForm({ ...form, ville: e.target.value })}
                 placeholder="Lyon"
@@ -76,8 +144,13 @@ export default function InscriptionPage() {
                 J&apos;accepte les <Link href="/terms" className="text-[var(--primary-light)] hover:underline">CGU</Link> et la <Link href="/privacy" className="text-[var(--primary-light)] hover:underline">politique de confidentialite</Link>
               </span>
             </label>
-            <button type="submit" className="btn-primary w-full justify-center text-base mt-2">
-              Creer mon compte
+            {error && (
+              <div className="text-sm text-[var(--accent-warm)] bg-[rgba(255,107,53,0.1)] px-4 py-3 rounded-xl">
+                {error}
+              </div>
+            )}
+            <button type="submit" disabled={loading} className="btn-primary w-full justify-center text-base mt-2 cursor-pointer disabled:opacity-50">
+              {loading ? 'Creation en cours...' : 'Creer mon compte'}
             </button>
           </form>
         </div>
@@ -90,5 +163,13 @@ export default function InscriptionPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function InscriptionPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-[var(--text-muted)]">Chargement...</div></div>}>
+      <InscriptionForm />
+    </Suspense>
   );
 }
