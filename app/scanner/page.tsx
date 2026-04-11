@@ -235,14 +235,6 @@ export default function ScannerPage() {
             setProgress(100);
             await new Promise(r => setTimeout(r, 400));
             setAudit(data.audit);
-            // Save scan to Supabase (fire and forget)
-            supabase.from('scans').insert({
-              place_id: selectedPlaceId || null,
-              business_name: name,
-              city: city,
-              global_score: data.audit.globalScore,
-              email: null,
-            }).then(() => {});
             setScanning(false);
             setShowResults(true);
             return;
@@ -255,13 +247,6 @@ export default function ScannerPage() {
         await new Promise(r => setTimeout(r, 400));
         const result = generateAudit(name, city);
         setAudit(result);
-        supabase.from('scans').insert({
-          place_id: selectedPlaceId || null,
-          business_name: name,
-          city: city,
-          global_score: result.globalScore,
-          email: null,
-        }).then(() => {});
         setScanning(false);
         setShowResults(true);
       } catch {
@@ -271,13 +256,6 @@ export default function ScannerPage() {
         await new Promise(r => setTimeout(r, 400));
         const result = generateAudit(name, city);
         setAudit(result);
-        supabase.from('scans').insert({
-          place_id: selectedPlaceId || null,
-          business_name: name,
-          city: city,
-          global_score: result.globalScore,
-          email: null,
-        }).then(() => {});
         setScanning(false);
         setShowResults(true);
       }
@@ -300,6 +278,21 @@ export default function ScannerPage() {
     setAudit(null);
     setShowResults(false);
   };
+
+  /* ─── Save scan to Supabase (decoupled from main flow) ─── */
+  useEffect(() => {
+    if (!audit || !showResults) return;
+    try {
+      supabase.from('scans').insert({
+        place_id: selectedPlaceId || null,
+        business_name: audit.businessName,
+        city: audit.city,
+        global_score: audit.globalScore,
+        email: null,
+      }).then(() => {});
+    } catch { /* never block UI */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showResults]);
 
   /* ─── Recommended plan based on score ─── */
   const getRecommendedIndex = (score: number) => {
