@@ -85,20 +85,88 @@ const CATEGORY_ICONS: Record<string, string> = {
   "Technique": "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z",
 };
 
+/* ─── Checkout Modal ─── */
+function CheckoutModal({
+  plan,
+  businessName,
+  city,
+  onClose,
+}: {
+  plan: string;
+  businessName: string;
+  city: string;
+  onClose: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, email, businessName, city }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur");
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur de paiement");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="glass-card p-8 max-w-md w-full relative z-10" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer">
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+        <h3 className="text-xl font-bold mb-1">Confirmer votre commande</h3>
+        <p className="text-sm text-[var(--text-muted)] mb-5">Forfait {plan.charAt(0).toUpperCase() + plan.slice(1)} pour {businessName}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="text-sm text-[var(--text-muted)] mb-1 block">Email</label>
+            <input
+              type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="votre@email.fr"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--surface-elevated)] border border-[var(--border-custom)] text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--primary)]"
+            />
+          </div>
+          {error && <p className="text-sm text-[var(--accent-warm)]">{error}</p>}
+          <button
+            type="submit" disabled={loading}
+            className="btn-primary w-full justify-center cursor-pointer disabled:opacity-50"
+          >
+            {loading ? "Redirection vers Stripe..." : "Payer maintenant"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Pricing mini ─── */
 const PLANS = [
   {
-    name: "Starter", price: "29", unit: "one-shot",
+    name: "Starter", price: "29", unit: "one-shot", slug: "starter",
     features: ["Audit complet 27 criteres", "Refonte complete de la fiche", "Rapport PDF detaille"],
     cta: "Optimiser ma fiche",
   },
   {
-    name: "Pro", price: "39", unit: "/mois", recommended: true,
+    name: "Pro", price: "39", unit: "/mois", slug: "pro", recommended: true,
     features: ["Tout Starter inclus", "4 posts Google/mois (IA)", "Suivi positions + dashboard"],
     cta: "Demarrer le Pro",
   },
   {
-    name: "Premium", price: "59", unit: "/mois",
+    name: "Premium", price: "59", unit: "/mois", slug: "premium",
     features: ["Tout Pro inclus", "Reponses avis automatiques", "8 posts/mois + support prioritaire"],
     cta: "Passer Premium",
   },
@@ -111,6 +179,7 @@ function ResultsContent() {
   const city = searchParams.get("city") || "Paris";
   const [audit, setAudit] = useState<AuditResult | null>(null);
   const [copied, setCopied] = useState(false);
+  const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
 
   useEffect(() => {
     setAudit(generateAudit(name, city));
@@ -328,7 +397,10 @@ function ResultsContent() {
                     </li>
                   ))}
                 </ul>
-                <button className={`w-full justify-center cursor-pointer ${i === recommendedPlan ? "btn-primary" : "btn-outline"}`}>
+                <button
+                  onClick={() => setCheckoutPlan(plan.slug)}
+                  className={`w-full justify-center cursor-pointer ${i === recommendedPlan ? "btn-primary" : "btn-outline"}`}
+                >
                   {plan.cta}
                 </button>
               </div>
@@ -356,6 +428,15 @@ function ResultsContent() {
           </div>
         </Reveal>
       </div>
+
+      {checkoutPlan && (
+        <CheckoutModal
+          plan={checkoutPlan}
+          businessName={audit.businessName}
+          city={audit.city}
+          onClose={() => setCheckoutPlan(null)}
+        />
+      )}
     </main>
   );
 }
