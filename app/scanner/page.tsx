@@ -4,13 +4,27 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
-import { generateAudit, type AuditResult } from "../lib/mock-score";
+import { generateAudit } from "../lib/mock-score";
 
 /* ─── Types ─── */
 interface Suggestion {
   name: string;
   address: string;
   placeId: string;
+}
+
+interface AuditResult {
+  businessName: string;
+  city: string;
+  globalScore: number;
+  categories: { name: string; criteria: { label: string; passed: boolean; detail: string; source?: string }[]; score: number; total: number }[];
+  passedCount: number;
+  failedCount: number;
+  totalCriteria: number;
+  rating?: number;
+  reviewCount?: number;
+  photoCount?: number;
+  hasWebsite?: boolean;
 }
 
 /* ─── Scan Messages ─── */
@@ -128,6 +142,8 @@ export default function ScannerPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(null);
 
+  const [selectedPlaceId, setSelectedPlaceId] = useState("");
+
   // Scan state
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -161,6 +177,7 @@ export default function ScannerPage() {
   const handleSelect = (s: Suggestion) => {
     setSelectedName(s.name);
     setSelectedAddress(s.address);
+    setSelectedPlaceId(s.placeId);
     setQuery(`${s.name} — ${s.address}`);
     setShowSuggestions(false);
     setSuggestions([]);
@@ -179,42 +196,77 @@ export default function ScannerPage() {
   }, []);
 
   /* ─── Scanning ─── */
+  const auditFetchRef = useRef(false);
+
   useEffect(() => {
     if (!scanning) return;
-    const duration = 4500;
-    const steps = SCAN_MESSAGES.length;
-    const interval = duration / steps;
+    auditFetchRef.current = false;
 
+    const steps = SCAN_MESSAGES.length;
     const msgTimer = setInterval(() => {
       setMsgIndex((prev) => {
         if (prev >= steps - 1) { clearInterval(msgTimer); return prev; }
         return prev + 1;
       });
-    }, interval);
+    }, 900);
 
     const progTimer = setInterval(() => {
       setProgress((prev) => {
-        if (prev >= 100) { clearInterval(progTimer); return 100; }
-        return prev + 2;
+        // Slow down near 90% to wait for API
+        if (auditFetchRef.current) return prev >= 100 ? 100 : prev + 3;
+        return prev >= 85 ? 85 : prev + 1.5;
       });
-    }, duration / 50);
+    }, 80);
 
-    const doneTimer = setTimeout(() => {
-      // Extract city from address
-      const city = selectedAddress.split(",").pop()?.trim() || "France";
-      const name = selectedName || query.split("—")[0]?.trim() || query;
-      const result = generateAudit(name, city);
-      setAudit(result);
-      setScanning(false);
-      setShowResults(true);
-    }, duration + 300);
+    // Call real audit API
+    const city = selectedAddress.split(",").pop()?.trim() || "France";
+    const name = selectedName || query.split("—")[0]?.trim() || query;
+
+    const doAudit = async () => {
+      try {
+        if (selectedPlaceId) {
+          const res = await fetch(`/api/audit?placeId=${encodeURIComponent(selectedPlaceId)}&name=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}`);
+          const data = await res.json();
+          if (data.audit && !data.fallback) {
+            auditFetchRef.current = true;
+            // Wait for progress bar to finish
+            await new Promise(r => setTimeout(r, 800));
+            setProgress(100);
+            await new Promise(r => setTimeout(r, 400));
+            setAudit(data.audit);
+            setScanning(false);
+            setShowResults(true);
+            return;
+          }
+        }
+        // Fallback to mock
+        auditFetchRef.current = true;
+        await new Promise(r => setTimeout(r, 1500));
+        setProgress(100);
+        await new Promise(r => setTimeout(r, 400));
+        const result = generateAudit(name, city);
+        setAudit(result);
+        setScanning(false);
+        setShowResults(true);
+      } catch {
+        auditFetchRef.current = true;
+        await new Promise(r => setTimeout(r, 1000));
+        setProgress(100);
+        await new Promise(r => setTimeout(r, 400));
+        const result = generateAudit(name, city);
+        setAudit(result);
+        setScanning(false);
+        setShowResults(true);
+      }
+    };
+
+    doAudit();
 
     return () => {
       clearInterval(msgTimer);
       clearInterval(progTimer);
-      clearTimeout(doneTimer);
     };
-  }, [scanning, selectedName, selectedAddress, query]);
+  }, [scanning, selectedName, selectedAddress, selectedPlaceId, query]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -424,7 +476,7 @@ export default function ScannerPage() {
             </div>
 
             {/* Quick stats */}
-            <div className="grid grid-cols-2 gap-4 mb-10">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
               <div className="glass-card p-5 text-center">
                 <div className="text-3xl font-mono font-extrabold text-[var(--accent)]">{audit.passedCount}</div>
                 <div className="text-xs text-[var(--text-muted)] mt-1">criteres valides</div>
@@ -433,6 +485,18 @@ export default function ScannerPage() {
                 <div className="text-3xl font-mono font-extrabold text-[var(--accent-warm)]">{audit.failedCount}</div>
                 <div className="text-xs text-[var(--text-muted)] mt-1">a corriger</div>
               </div>
+              {audit.rating !== undefined && audit.rating > 0 && (
+                <div className="glass-card p-5 text-center">
+                  <div className="text-3xl font-mono font-extrabold text-yellow-400">{audit.rating}</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-1">note moyenne /5</div>
+                </div>
+              )}
+              {audit.reviewCount !== undefined && audit.reviewCount > 0 && (
+                <div className="glass-card p-5 text-center">
+                  <div className="text-3xl font-mono font-extrabold text-[var(--primary)]">{audit.reviewCount}</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-1">avis Google</div>
+                </div>
+              )}
             </div>
 
             {/* Category summary cards */}
@@ -576,7 +640,7 @@ export default function ScannerPage() {
             {/* Scanner another */}
             <div className="text-center">
               <button
-                onClick={() => { setShowResults(false); setAudit(null); setQuery(""); setSelectedName(""); setSelectedAddress(""); }}
+                onClick={() => { setShowResults(false); setAudit(null); setQuery(""); setSelectedName(""); setSelectedAddress(""); setSelectedPlaceId(""); }}
                 className="text-sm text-primary hover:underline cursor-pointer"
               >
                 Scanner une autre fiche
