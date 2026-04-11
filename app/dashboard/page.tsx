@@ -1,0 +1,582 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+
+// ── Mock Data ──────────────────────────────────────────────────────────────────
+const BUSINESS = { name: 'Restaurant Le Comptoir', city: 'Lyon 6e' };
+
+const KPI = [
+  { label: 'Score GmbPro', value: 67, unit: '/100', change: null, type: 'gauge' as const },
+  { label: 'Vues ce mois', value: 2847, unit: '', change: '+12%', type: 'number' as const },
+  { label: 'Clics ce mois', value: 342, unit: '', change: '+8%', type: 'number' as const },
+  { label: 'Appels ce mois', value: 89, unit: '', change: '+23%', type: 'number' as const },
+];
+
+const SCORE_HISTORY = [
+  { month: 'Jan', score: 34 },
+  { month: 'Fev', score: 41 },
+  { month: 'Mar', score: 52 },
+  { month: 'Avr', score: 58 },
+  { month: 'Mai', score: 63 },
+  { month: 'Jun', score: 67 },
+];
+
+const REVIEWS = [
+  { stars: 5, name: 'Marie L.', text: 'Excellent restaurant, le service est impeccable et les plats delicieux. Je recommande vivement !', date: '8 juin 2026', responded: true },
+  { stars: 4, name: 'Thomas D.', text: 'Tres bon rapport qualite-prix. L\'ambiance est agreable, on reviendra.', date: '5 juin 2026', responded: true },
+  { stars: 2, name: 'Sophie R.', text: 'Attente trop longue pour le plat principal, dommage car la qualite etait au rendez-vous.', date: '3 juin 2026', responded: false },
+];
+
+const POSTS = [
+  { date: '15 juin', title: 'Menu d\'ete : decouvrez nos nouvelles salades', status: 'programme' as const },
+  { date: '12 juin', title: 'Soiree jazz ce vendredi soir', status: 'publie' as const },
+  { date: '18 juin', title: 'Nos producteurs locaux a l\'honneur', status: 'brouillon' as const },
+];
+
+const ACTIONS = [
+  { text: 'Repondre a 2 avis en attente', priority: 'urgent' as const },
+  { text: 'Ajouter 5 photos supplementaires', priority: 'important' as const },
+  { text: 'Mettre a jour les horaires de vacances', priority: 'suggestion' as const },
+  { text: 'Publier un post cette semaine', priority: 'suggestion' as const },
+];
+
+const FICHE = [
+  { section: 'Nom', value: 'Restaurant Le Comptoir', score: 'vert' as const },
+  { section: 'Adresse', value: '42 Rue de la Republique, 69006 Lyon', score: 'vert' as const },
+  { section: 'Telephone', value: '04 78 12 34 56', score: 'vert' as const },
+  { section: 'Site web', value: 'www.lecomptoir-lyon.fr', score: 'vert' as const },
+  { section: 'Horaires', value: 'Lun-Sam: 11h30-14h30, 18h30-22h30 | Dim: Ferme', score: 'orange' as const },
+  { section: 'Description', value: 'Restaurant gastronomique au coeur du 6e arrondissement de Lyon. Cuisine francaise moderne avec des produits frais et locaux.', score: 'orange' as const },
+  { section: 'Categories', value: 'Restaurant francais, Restaurant gastronomique', score: 'vert' as const },
+  { section: 'Attributs', value: 'Terrasse, Wi-Fi, Accessible PMR', score: 'rouge' as const },
+];
+
+const RANKINGS = [
+  { keyword: 'restaurant italien lyon', position: 4, change: 3, volume: '2 400/mois' },
+  { keyword: 'pizzeria lyon 6', position: 2, change: 5, volume: '890/mois' },
+  { keyword: 'livraison pizza lyon', position: 12, change: -1, volume: '3 200/mois' },
+  { keyword: 'restaurant lyon 6eme', position: 7, change: 2, volume: '1 800/mois' },
+  { keyword: 'brunch lyon', position: 15, change: 4, volume: '4 100/mois' },
+];
+
+const REPORTS = [
+  { name: 'Rapport Juin 2026', date: '30 juin 2026' },
+  { name: 'Rapport Mai 2026', date: '31 mai 2026' },
+  { name: 'Rapport Avril 2026', date: '30 avril 2026' },
+  { name: 'Rapport Mars 2026', date: '31 mars 2026' },
+];
+
+const ALL_REVIEWS = [
+  ...REVIEWS,
+  { stars: 5, name: 'Jean-Pierre M.', text: 'Un vrai bijou gastronomique. Le chef est talentueux et les desserts sont a tomber.', date: '1 juin 2026', responded: true },
+  { stars: 3, name: 'Camille B.', text: 'Cadre sympa mais les portions sont un peu justes pour le prix.', date: '28 mai 2026', responded: false },
+];
+
+const QUESTIONS = [
+  { question: 'Est-ce que vous avez une terrasse ?', author: 'Lucas T.', date: '7 juin 2026', answer: 'Oui, nous disposons d\'une terrasse ombragee de 20 places. Reservation recommandee en soiree.' },
+  { question: 'Faites-vous des menus enfants ?', author: 'Nadia K.', date: '4 juin 2026', answer: 'Absolument ! Notre menu enfant est a 12 euros et comprend entree, plat et dessert adaptes.' },
+];
+
+// ── Sidebar Items ──────────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'overview', label: 'Vue d\'ensemble', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
+  { id: 'fiche', label: 'Ma fiche', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
+  { id: 'posts', label: 'Posts Google', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
+  { id: 'reviews', label: 'Avis & Questions', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
+  { id: 'positions', label: 'Positions', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+  { id: 'reports', label: 'Rapports', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+  { id: 'settings', label: 'Parametres', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
+];
+
+// ── Components ─────────────────────────────────────────────────────────────────
+
+function ScoreGauge({ value }: { value: number }) {
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius;
+  const progress = (value / 100) * circumference;
+  const color = value >= 70 ? 'var(--accent)' : value >= 40 ? '#F59E0B' : 'var(--accent-warm)';
+
+  return (
+    <div className="relative w-24 h-24 mx-auto">
+      <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+        <circle cx="50" cy="50" r={radius} fill="none" stroke="var(--surface)" strokeWidth="8" />
+        <circle cx="50" cy="50" r={radius} fill="none" stroke={color} strokeWidth="8" strokeLinecap="round"
+          strokeDasharray={circumference} strokeDashoffset={circumference - progress}
+          style={{ transition: 'stroke-dashoffset 1.5s ease' }} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-2xl font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function ScoreChart() {
+  const maxScore = 100;
+  const w = 500, h = 200, pad = 40;
+  const points = SCORE_HISTORY.map((d, i) => ({
+    x: pad + (i / (SCORE_HISTORY.length - 1)) * (w - 2 * pad),
+    y: h - pad - (d.score / maxScore) * (h - 2 * pad),
+  }));
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const areaPath = `${linePath} L${points[points.length - 1].x},${h - pad} L${points[0].x},${h - pad} Z`;
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-auto">
+      <defs>
+        <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* Grid lines */}
+      {[0, 25, 50, 75, 100].map(v => {
+        const y = h - pad - (v / maxScore) * (h - 2 * pad);
+        return <g key={v}>
+          <line x1={pad} y1={y} x2={w - pad} y2={y} stroke="var(--border)" strokeWidth="1" />
+          <text x={pad - 8} y={y + 4} textAnchor="end" fill="var(--text-muted)" fontSize="11">{v}</text>
+        </g>;
+      })}
+      <path d={areaPath} fill="url(#scoreGrad)" />
+      <path d={linePath} fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={p.x} cy={p.y} r="5" fill="var(--bg)" stroke="var(--primary)" strokeWidth="2.5" />
+          <text x={p.x} y={h - pad + 20} textAnchor="middle" fill="var(--text-muted)" fontSize="12">{SCORE_HISTORY[i].month}</text>
+          <text x={p.x} y={p.y - 12} textAnchor="middle" fill="var(--text)" fontSize="11" fontWeight="600">{SCORE_HISTORY[i].score}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function Stars({ count }: { count: number }) {
+  return (
+    <div className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map(i => (
+        <svg key={i} className="w-4 h-4" viewBox="0 0 20 20" fill={i <= count ? '#F59E0B' : 'var(--surface-elevated)'}>
+          <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+        </svg>
+      ))}
+    </div>
+  );
+}
+
+function Sparkline({ data }: { data: number[] }) {
+  const w = 80, h = 24;
+  const max = Math.max(...data), min = Math.min(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(' ');
+  return <svg viewBox={`0 0 ${w} ${h}`} className="w-20 h-6"><polyline points={pts} fill="none" stroke="var(--primary)" strokeWidth="1.5" /></svg>;
+}
+
+function PriorityBadge({ priority }: { priority: 'urgent' | 'important' | 'suggestion' }) {
+  const colors = { urgent: 'bg-orange-500/20 text-orange-400', important: 'bg-yellow-500/20 text-yellow-400', suggestion: 'bg-blue-500/20 text-blue-400' };
+  const labels = { urgent: 'Urgent', important: 'Important', suggestion: 'Suggestion' };
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[priority]}`}>{labels[priority]}</span>;
+}
+
+function ScoreDot({ score }: { score: 'vert' | 'orange' | 'rouge' }) {
+  const colors = { vert: 'bg-green-400', orange: 'bg-yellow-400', rouge: 'bg-red-400' };
+  return <span className={`inline-block w-2.5 h-2.5 rounded-full ${colors[score]}`} />;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const m: Record<string, string> = { publie: 'bg-green-500/20 text-green-400', programme: 'bg-blue-500/20 text-blue-400', brouillon: 'bg-gray-500/20 text-gray-400' };
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m[status] || m.brouillon}`}>{status}</span>;
+}
+
+// ── Tab Views ──────────────────────────────────────────────────────────────────
+
+function OverviewTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      {/* KPI Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {KPI.map((k) => (
+          <div key={k.label} className="glass-card p-5">
+            <p className="text-sm text-[var(--text-muted)] mb-2">{k.label}</p>
+            {k.type === 'gauge' ? <ScoreGauge value={k.value} /> : (
+              <div>
+                <p className="text-3xl font-bold text-[var(--text)]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {k.value.toLocaleString('fr-FR')}<span className="text-base font-normal text-[var(--text-muted)]">{k.unit}</span>
+                </p>
+                {k.change && <p className="text-sm text-green-400 mt-1">{k.change}</p>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Score Chart */}
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold text-[var(--text)] mb-4">Evolution du score</h3>
+        <ScoreChart />
+      </div>
+
+      {/* Reviews + Posts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-semibold text-[var(--text)] mb-4">Derniers avis</h3>
+          <div className="flex flex-col gap-4">
+            {REVIEWS.map((r, i) => (
+              <div key={i} className="flex flex-col gap-1.5 pb-4 border-b border-[var(--border)] last:border-0 last:pb-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Stars count={r.stars} />
+                    <span className="text-sm font-medium text-[var(--text)]">{r.name}</span>
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)]">{r.date}</span>
+                </div>
+                <p className="text-sm text-[var(--text-muted)] line-clamp-2">{r.text}</p>
+                <span className={`text-xs ${r.responded ? 'text-green-400' : 'text-orange-400'}`}>
+                  {r.responded ? 'Repondu' : 'En attente'}
+                </span>
+              </div>
+            ))}
+          </div>
+          <button className="text-sm text-[var(--primary-light)] hover:underline mt-4">Voir tous les avis</button>
+        </div>
+
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-semibold text-[var(--text)] mb-4">Posts planifies</h3>
+          <div className="flex flex-col gap-4">
+            {POSTS.map((p, i) => (
+              <div key={i} className="flex items-center justify-between pb-4 border-b border-[var(--border)] last:border-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text)]">{p.title}</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">{p.date}</p>
+                </div>
+                <StatusBadge status={p.status} />
+              </div>
+            ))}
+          </div>
+          <button className="text-sm text-[var(--primary-light)] hover:underline mt-4">Gerer les posts</button>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold text-[var(--text)] mb-4">Actions recommandees</h3>
+        <div className="flex flex-col gap-3">
+          {ACTIONS.map((a, i) => (
+            <div key={i} className="flex items-center justify-between py-2">
+              <span className="text-sm text-[var(--text)]">{a.text}</span>
+              <PriorityBadge priority={a.priority} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FicheTab() {
+  return (
+    <div className="glass-card p-6">
+      <h3 className="text-lg font-semibold text-[var(--text)] mb-6">Informations de votre fiche</h3>
+      <div className="flex flex-col gap-5">
+        {FICHE.map((f, i) => (
+          <div key={i} className="flex items-start justify-between pb-5 border-b border-[var(--border)] last:border-0 last:pb-0">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <ScoreDot score={f.score} />
+                <span className="text-sm font-semibold text-[var(--text)]">{f.section}</span>
+              </div>
+              <p className="text-sm text-[var(--text-muted)] ml-4.5">{f.value}</p>
+            </div>
+            <button className="text-xs text-[var(--text-muted)] border border-[var(--border)] rounded-lg px-3 py-1.5 opacity-50 cursor-not-allowed" title="Bientot disponible">
+              Modifier
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PostsTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-[var(--text)]">Posts Google</h3>
+        <button className="btn-primary text-sm !py-2 !px-4">Generer un nouveau post (IA)</button>
+      </div>
+      {/* Weekly grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {POSTS.map((p, i) => (
+          <div key={i} className="glass-card p-5">
+            <div className="w-full h-32 rounded-lg bg-[var(--surface-elevated)] mb-3 flex items-center justify-center">
+              <svg className="w-10 h-10 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-[var(--text)] mb-1">{p.title}</p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-[var(--text-muted)]">{p.date}</span>
+              <StatusBadge status={p.status} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Phone preview */}
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Apercu du prochain post</h4>
+        <div className="mx-auto w-72 rounded-3xl border-2 border-[var(--border)] p-4 bg-[var(--surface)]">
+          <div className="w-full h-40 rounded-xl bg-[var(--surface-elevated)] mb-3" />
+          <p className="text-sm font-semibold text-[var(--text)]">{POSTS[0].title}</p>
+          <p className="text-xs text-[var(--text-muted)] mt-1">Publie par Restaurant Le Comptoir</p>
+          <button className="w-full mt-3 text-xs py-2 rounded-lg bg-[var(--primary)] text-white font-medium">En savoir plus</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewsTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <h3 className="text-lg font-semibold text-[var(--text)]">Avis clients</h3>
+      <div className="flex flex-col gap-4">
+        {ALL_REVIEWS.map((r, i) => (
+          <div key={i} className="glass-card p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Stars count={r.stars} />
+                <span className="text-sm font-medium text-[var(--text)]">{r.name}</span>
+              </div>
+              <span className="text-xs text-[var(--text-muted)]">{r.date}</span>
+            </div>
+            <p className="text-sm text-[var(--text-muted)] mb-3">{r.text}</p>
+            {r.responded ? (
+              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                <p className="text-xs text-green-400 font-medium mb-1">Reponse generee par IA</p>
+                <p className="text-sm text-[var(--text-muted)]">Merci pour votre avis ! Nous sommes ravis que vous ayez apprecie votre experience.</p>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button className="btn-primary text-xs !py-1.5 !px-3">Publier la reponse</button>
+                <button className="btn-outline text-xs !py-1.5 !px-3">Modifier</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <h3 className="text-lg font-semibold text-[var(--text)] mt-4">Questions</h3>
+      <div className="flex flex-col gap-4">
+        {QUESTIONS.map((q, i) => (
+          <div key={i} className="glass-card p-5">
+            <p className="text-sm font-medium text-[var(--text)] mb-1">{q.question}</p>
+            <p className="text-xs text-[var(--text-muted)] mb-3">Par {q.author} · {q.date}</p>
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+              <p className="text-xs text-blue-400 font-medium mb-1">Reponse suggeree</p>
+              <p className="text-sm text-[var(--text-muted)]">{q.answer}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PositionsTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <h3 className="text-lg font-semibold text-[var(--text)]">Votre classement pour 5 mots-cles principaux</h3>
+      <div className="glass-card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[var(--border)]">
+              <th className="text-left p-4 text-[var(--text-muted)] font-medium">Mot-cle</th>
+              <th className="text-center p-4 text-[var(--text-muted)] font-medium">Position</th>
+              <th className="text-center p-4 text-[var(--text-muted)] font-medium">Evolution</th>
+              <th className="text-center p-4 text-[var(--text-muted)] font-medium">Tendance</th>
+              <th className="text-right p-4 text-[var(--text-muted)] font-medium">Volume</th>
+            </tr>
+          </thead>
+          <tbody>
+            {RANKINGS.map((r, i) => (
+              <tr key={i} className="border-b border-[var(--border)] last:border-0">
+                <td className="p-4 text-[var(--text)] font-medium">{r.keyword}</td>
+                <td className="p-4 text-center text-[var(--text)] font-bold" style={{ fontVariantNumeric: 'tabular-nums' }}>#{r.position}</td>
+                <td className="p-4 text-center">
+                  <span className={r.change > 0 ? 'text-green-400' : 'text-red-400'} style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {r.change > 0 ? '+' : ''}{r.change}
+                  </span>
+                </td>
+                <td className="p-4 flex justify-center">
+                  <Sparkline data={[r.position + 5, r.position + 3, r.position + 1, r.position, r.position - (r.change > 0 ? 1 : -1)].map(v => Math.max(1, v))} />
+                </td>
+                <td className="p-4 text-right text-[var(--text-muted)]" style={{ fontVariantNumeric: 'tabular-nums' }}>{r.volume}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ReportsTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <h3 className="text-lg font-semibold text-[var(--text)]">Rapports mensuels</h3>
+      {/* Latest report preview */}
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Apercu — {REPORTS[0].name}</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[{ label: 'Score', val: '67/100' }, { label: 'Vues', val: '2 847' }, { label: 'Clics', val: '342' }, { label: 'Appels', val: '89' }].map(m => (
+            <div key={m.label} className="text-center">
+              <p className="text-2xl font-bold text-[var(--text)]" style={{ fontVariantNumeric: 'tabular-nums' }}>{m.val}</p>
+              <p className="text-xs text-[var(--text-muted)]">{m.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col gap-3">
+        {REPORTS.map((r, i) => (
+          <div key={i} className="glass-card p-4 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-[var(--text)]">{r.name}</p>
+              <p className="text-xs text-[var(--text-muted)]">{r.date}</p>
+            </div>
+            <button className="btn-outline text-xs !py-1.5 !px-3">Telecharger PDF</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab() {
+  return (
+    <div className="flex flex-col gap-6">
+      <h3 className="text-lg font-semibold text-[var(--text)]">Parametres</h3>
+
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Profil</h4>
+        <div className="flex flex-col gap-4">
+          {[{ label: 'Nom', value: 'Jean Dupont' }, { label: 'Email', value: 'jean@lecomptoir-lyon.fr' }].map(f => (
+            <div key={f.label}>
+              <label className="block text-xs text-[var(--text-muted)] mb-1">{f.label}</label>
+              <input type="text" defaultValue={f.value} className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm" readOnly />
+            </div>
+          ))}
+          <button className="btn-outline text-sm !py-2 w-fit">Changer le mot de passe</button>
+        </div>
+      </div>
+
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Abonnement</h4>
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-sm text-[var(--text)]">Forfait actuel :</span>
+          <span className="text-sm font-bold text-[var(--primary)]">Pro — 39 euros/mois</span>
+        </div>
+        <p className="text-xs text-[var(--text-muted)] mb-3">Prochain renouvellement : 15 juillet 2026</p>
+        <button className="btn-outline text-sm !py-2">Changer de forfait</button>
+      </div>
+
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Notifications</h4>
+        <div className="flex flex-col gap-3">
+          {['Nouvel avis recu', 'Rapport mensuel pret', 'Changement de position'].map(n => (
+            <label key={n} className="flex items-center justify-between cursor-pointer">
+              <span className="text-sm text-[var(--text)]">{n}</span>
+              <div className="w-10 h-5 rounded-full bg-[var(--accent)] relative">
+                <div className="absolute right-0.5 top-0.5 w-4 h-4 rounded-full bg-white" />
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="glass-card p-6 border-red-500/30">
+        <h4 className="text-sm font-semibold text-red-400 mb-2">Zone dangereuse</h4>
+        <p className="text-xs text-[var(--text-muted)] mb-3">Cette action est irreversible.</p>
+        <button className="text-sm text-red-400 border border-red-500/30 rounded-lg px-4 py-2 hover:bg-red-500/10 transition-colors">
+          Supprimer mon compte
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Dashboard ─────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const tabContent: Record<string, React.ReactNode> = {
+    overview: <OverviewTab />,
+    fiche: <FicheTab />,
+    posts: <PostsTab />,
+    reviews: <ReviewsTab />,
+    positions: <PositionsTab />,
+    reports: <ReportsTab />,
+    settings: <SettingsTab />,
+  };
+
+  return (
+    <div className="min-h-screen flex" style={{ background: 'var(--bg)' }}>
+      {/* Mobile overlay */}
+      {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+
+      {/* Sidebar */}
+      <aside className={`fixed top-0 left-0 h-full w-60 bg-[#0A0E1A] border-r border-[var(--border)] z-50 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+        <div className="h-16 flex items-center gap-2 px-5 border-b border-[var(--border)]">
+          <svg className="w-6 h-6 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="10" opacity="0.3" /><circle cx="12" cy="12" r="6" opacity="0.6" /><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+          </svg>
+          <span className="text-lg font-extrabold text-[var(--text)]">GmbPro</span>
+        </div>
+        <nav className="flex-1 py-4 flex flex-col gap-1 px-3">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => { setActiveTab(t.id); setSidebarOpen(false); }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer ${activeTab === t.id ? 'bg-[var(--primary)]/10 text-[var(--primary-light)] border-l-2 border-[var(--primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/5'}`}
+            >
+              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d={t.icon} />
+              </svg>
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        <div className="p-4 border-t border-[var(--border)]">
+          <Link href="/" className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">Retour au site</Link>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div className="flex-1 lg:ml-60">
+        {/* Top bar */}
+        <header className="h-16 glass flex items-center justify-between px-6 sticky top-0 z-30">
+          <div className="flex items-center gap-3">
+            <button className="lg:hidden text-[var(--text)] cursor-pointer" onClick={() => setSidebarOpen(true)}>
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+            <div>
+              <p className="text-sm font-semibold text-[var(--text)]">{BUSINESS.name}</p>
+              <p className="text-xs text-[var(--text-muted)]">{BUSINESS.city}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <button className="relative text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-[var(--accent-warm)] rounded-full" />
+            </button>
+            <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-sm font-bold text-white">J</div>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main className="p-6 max-w-6xl">
+          {tabContent[activeTab]}
+        </main>
+      </div>
+    </div>
+  );
+}
