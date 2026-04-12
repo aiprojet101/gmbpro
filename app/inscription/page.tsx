@@ -47,8 +47,18 @@ function InscriptionForm() {
   };
 
   const handleSelectSuggestion = (s: Suggestion) => {
-    // Extract city from address (last segment)
-    const city = s.address.split(',').pop()?.trim().replace(/^\d{5}\s*/, '') || form.ville;
+    // Extract city: take 2nd-to-last segment if last is "France", else last
+    const parts = s.address.split(',').map(p => p.trim()).filter(Boolean);
+    let city = form.ville;
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const candidate = /france/i.test(last) && parts.length >= 2
+        ? parts[parts.length - 2]
+        : last;
+      city = candidate.replace(/^\d{5}\s*/, '').trim();
+    } else if (parts.length === 1) {
+      city = parts[0].replace(/^\d{5}\s*/, '').trim();
+    }
     setForm({ ...form, nom: s.name, ville: city });
     setShowSuggestions(false);
     setSuggestions([]);

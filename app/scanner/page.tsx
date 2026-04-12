@@ -219,8 +219,16 @@ export default function ScannerPage() {
       });
     }, 80);
 
-    // Call real audit API
-    const city = selectedAddress.split(",").pop()?.trim() || "France";
+    // Call real audit API — extract city (2nd to last if last is "France")
+    const parts = selectedAddress.split(",").map(p => p.trim()).filter(Boolean);
+    let city = "France";
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const candidate = /france/i.test(last) ? parts[parts.length - 2] : last;
+      city = candidate.replace(/^\d{5}\s*/, '').trim();
+    } else if (parts.length === 1) {
+      city = parts[0].replace(/^\d{5}\s*/, '').trim();
+    }
     const name = selectedName || query.split("—")[0]?.trim() || query;
 
     const doAudit = async () => {
