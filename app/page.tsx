@@ -245,7 +245,7 @@ export default function Home() {
             <button onClick={() => scrollTo("features")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer">Fonctionnalites</button>
             <button onClick={() => scrollTo("pricing")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer">Tarifs</button>
             <button onClick={() => scrollTo("faq")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer">FAQ</button>
-            <button onClick={() => scrollTo("hero")} className="btn-primary text-sm !py-2 !px-5 cursor-pointer">Scanner ma fiche</button>
+            <a href="/scanner" className="btn-primary text-sm !py-2 !px-5 cursor-pointer inline-flex items-center">Scanner ma fiche</a>
           </div>
           {/* Mobile menu button */}
           <button
@@ -268,7 +268,7 @@ export default function Home() {
             <button onClick={() => { scrollTo("features"); setMenuOpen(false); }} className="text-sm text-[var(--text-muted)] text-left cursor-pointer">Fonctionnalites</button>
             <button onClick={() => { scrollTo("pricing"); setMenuOpen(false); }} className="text-sm text-[var(--text-muted)] text-left cursor-pointer">Tarifs</button>
             <button onClick={() => { scrollTo("faq"); setMenuOpen(false); }} className="text-sm text-[var(--text-muted)] text-left cursor-pointer">FAQ</button>
-            <button onClick={() => { scrollTo("hero"); setMenuOpen(false); }} className="btn-primary text-sm !py-2 text-center cursor-pointer">Scanner ma fiche</button>
+            <a href="/scanner" onClick={() => setMenuOpen(false)} className="btn-primary text-sm !py-2 text-center cursor-pointer">Scanner ma fiche</a>
           </div>
         )}
       </header>
@@ -288,10 +288,10 @@ export default function Home() {
                   <strong className="text-[var(--text)]">Plus de clients, zero effort.</strong>
                 </p>
                 <div className="flex flex-wrap gap-4 mb-12 animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
-                  <button onClick={() => scrollTo("pricing")} className="btn-primary text-base cursor-pointer">
+                  <a href="/scanner" className="btn-primary text-base cursor-pointer inline-flex items-center">
                     Scanner ma fiche gratuitement
                     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
-                  </button>
+                  </a>
                   <button onClick={() => scrollTo("how")} className="btn-outline text-base cursor-pointer">Voir la demo</button>
                 </div>
                 {/* Trust badges */}
@@ -604,10 +604,10 @@ export default function Home() {
               <p className="text-lg text-[var(--text-muted)] mb-10">
                 Scannez votre fiche gratuitement en 30 secondes. Decouvrez votre score et les points a ameliorer.
               </p>
-              <button onClick={() => scrollTo("pricing")} className="btn-primary text-lg !py-4 !px-10 glow-accent cursor-pointer">
+              <a href="/scanner" className="btn-primary text-lg !py-4 !px-10 glow-accent cursor-pointer inline-flex items-center">
                 Scanner ma fiche gratuitement
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
-              </button>
+              </a>
             </Reveal>
           </div>
         </section>
