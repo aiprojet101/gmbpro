@@ -290,15 +290,37 @@ export default function ScannerPage() {
   /* ─── Save scan to Supabase (decoupled from main flow) ─── */
   useEffect(() => {
     if (!audit || !showResults) return;
-    try {
-      supabase.from('scans').insert({
-        place_id: selectedPlaceId || null,
-        business_name: audit.businessName,
-        city: audit.city,
-        global_score: audit.globalScore,
-        email: null,
-      }).then(() => {});
-    } catch { /* never block UI */ }
+    (async () => {
+      try {
+        // Always save anonymous scan (admin analytics)
+        await supabase.from('scans').insert({
+          place_id: selectedPlaceId || null,
+          business_name: audit.businessName,
+          city: audit.city,
+          global_score: audit.globalScore,
+          email: null,
+        });
+
+        // If logged in, also save full audit linked to client_id
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from('audits').insert({
+            client_id: user.id,
+            place_id: selectedPlaceId || null,
+            business_name: audit.businessName,
+            city: audit.city,
+            global_score: audit.globalScore,
+            passed_count: audit.passedCount,
+            failed_count: audit.failedCount,
+            total_criteria: audit.totalCriteria,
+            rating: audit.rating ?? null,
+            review_count: audit.reviewCount ?? null,
+            photo_count: audit.photoCount ?? null,
+            categories: audit.categories,
+          });
+        }
+      } catch { /* never block UI */ }
+    })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showResults]);
 

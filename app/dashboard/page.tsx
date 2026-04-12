@@ -3,7 +3,18 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { getUser, getClient, signOut } from '../lib/auth';
+import { getUser, getClient, getClientAudits, signOut } from '../lib/auth';
+
+interface AuditRow {
+  id: string;
+  business_name: string;
+  city: string;
+  global_score: number;
+  passed_count: number;
+  failed_count: number;
+  total_criteria: number;
+  created_at: string;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ClientData {
@@ -94,6 +105,7 @@ const QUESTIONS = [
 const TABS = [
   { id: 'overview', label: 'Vue d\'ensemble', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
   { id: 'fiche', label: 'Ma fiche', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
+  { id: 'history', label: 'Historique', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
   { id: 'posts', label: 'Posts Google', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
   { id: 'reviews', label: 'Avis & Questions', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
   { id: 'positions', label: 'Positions', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
@@ -461,6 +473,90 @@ function ReportsTab() {
   );
 }
 
+function HistoryTab({ audits, loading }: { audits: AuditRow[]; loading: boolean }) {
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch { return iso; }
+  };
+
+  const scoreColor = (s: number) => s < 40 ? 'var(--accent-warm)' : s < 70 ? '#F59E0B' : 'var(--accent)';
+  const scoreBg = (s: number) => s < 40 ? 'rgba(255,107,53,0.12)' : s < 70 ? 'rgba(245,158,11,0.12)' : 'rgba(0,229,160,0.12)';
+
+  if (loading) {
+    return (
+      <div className="glass-card p-10 text-center">
+        <div className="w-8 h-8 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+        <p className="text-sm text-[var(--text-muted)]">Chargement de l&apos;historique...</p>
+      </div>
+    );
+  }
+
+  if (audits.length === 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <h3 className="text-lg font-semibold text-[var(--text)]">Historique des audits</h3>
+        <div className="glass-card p-10 text-center">
+          <svg className="w-12 h-12 mx-auto mb-4 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2a4 4 0 014-4h4m0 0V7a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2h11a2 2 0 002-2v-4m-2-4l-4 4m0 0l-4-4m4 4V3" />
+          </svg>
+          <p className="text-sm text-[var(--text)] font-medium mb-2">Aucun audit realise</p>
+          <p className="text-sm text-[var(--text-muted)] mb-5">Lancez votre premier scan.</p>
+          <Link href="/scanner" className="btn-primary text-sm inline-flex !py-2 !px-4">
+            Nouveau scan
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-[var(--text)]">Historique des audits</h3>
+        <Link href="/scanner" className="btn-primary text-sm !py-2 !px-4">Nouveau scan</Link>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {audits.map(a => (
+          <div key={a.id} className="glass-card p-5 flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-[var(--text)] truncate">{a.business_name}</p>
+                <p className="text-xs text-[var(--text-muted)] truncate">{a.city}</p>
+              </div>
+              <div
+                className="px-3 py-1.5 rounded-full text-sm font-mono font-bold shrink-0"
+                style={{ background: scoreBg(a.global_score), color: scoreColor(a.global_score) }}
+              >
+                {a.global_score}/100
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-[var(--text-muted)]">
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
+                {a.passed_count} valides
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-orange-400" />
+                {a.failed_count} a corriger
+              </span>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+              <span className="text-xs text-[var(--text-muted)]">{formatDate(a.created_at)}</span>
+              <Link
+                href={`/scanner/resultats?name=${encodeURIComponent(a.business_name)}&city=${encodeURIComponent(a.city)}`}
+                className="text-xs text-[var(--primary-light)] hover:underline font-medium"
+              >
+                Voir le detail
+              </Link>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsTab({ client, onSignOut }: { client: ClientData | null; onSignOut: () => void }) {
   const planLabels: Record<string, string> = {
     starter: 'Starter — 29 euros (one-shot)',
@@ -543,6 +639,8 @@ export default function DashboardPage() {
   const [client, setClient] = useState<ClientData | null>(null);
   const [businessName, setBusinessName] = useState(BUSINESS_DEFAULT.name);
   const [businessCity, setBusinessCity] = useState(BUSINESS_DEFAULT.city);
+  const [audits, setAudits] = useState<AuditRow[]>([]);
+  const [auditsLoading, setAuditsLoading] = useState(true);
 
   // Auth check + load client data
   useEffect(() => {
@@ -559,6 +657,11 @@ export default function DashboardPage() {
         setBusinessCity(clientData.city || BUSINESS_DEFAULT.city);
       }
       setLoading(false);
+      try {
+        const rows = await getClientAudits();
+        setAudits(rows as AuditRow[]);
+      } catch { /* ignore */ }
+      setAuditsLoading(false);
     })();
   }, [router]);
 
@@ -581,6 +684,7 @@ export default function DashboardPage() {
   const tabContent: Record<string, React.ReactNode> = {
     overview: <OverviewTab />,
     fiche: <FicheTab />,
+    history: <HistoryTab audits={audits} loading={auditsLoading} />,
     posts: <PostsTab />,
     reviews: <ReviewsTab />,
     positions: <PositionsTab />,
@@ -636,6 +740,17 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-4">
+            <Link href="/scanner" className="btn-primary text-sm !py-2 !px-4 hidden sm:inline-flex">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Nouveau scan
+            </Link>
+            <Link href="/scanner" aria-label="Nouveau scan" className="sm:hidden text-[var(--primary)]">
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+            </Link>
             <button className="relative text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
               <span className="absolute -top-1 -right-1 w-2 h-2 bg-[var(--accent-warm)] rounded-full" />

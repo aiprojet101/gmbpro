@@ -92,7 +92,7 @@ export default function ConnexionPage() {
                 />
                 <span className="text-sm text-[var(--text-muted)]">Se souvenir de moi</span>
               </label>
-              <button type="button" className="text-sm text-[var(--primary-light)] hover:underline cursor-pointer">Mot de passe oublie ?</button>
+              <Link href="/mot-de-passe-oublie" className="text-sm text-[var(--primary-light)] hover:underline cursor-pointer">Mot de passe oublie ?</Link>
             </div>
             {error && (
               <div className="text-sm text-[var(--accent-warm)] bg-[rgba(255,107,53,0.1)] px-4 py-3 rounded-xl">
