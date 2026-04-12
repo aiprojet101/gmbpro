@@ -115,3 +115,60 @@ CREATE INDEX idx_scans_email ON scans(email);
 CREATE INDEX idx_posts_client ON gmb_posts(client_id);
 CREATE INDEX idx_positions_client ON keyword_positions(client_id);
 CREATE INDEX idx_scans_created ON scans(created_at DESC);
+
+-- ═══ Prospects (businesses scanned from cities/sectors) ═══
+
+CREATE TABLE IF NOT EXISTS prospects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  place_id TEXT UNIQUE,
+  business_name TEXT NOT NULL,
+  city TEXT NOT NULL,
+  sector TEXT,
+  address TEXT,
+  phone TEXT,
+  website TEXT,
+  email TEXT,
+  global_score INTEGER,
+  passed_count INTEGER,
+  failed_count INTEGER,
+  rating NUMERIC(2,1),
+  review_count INTEGER,
+  photo_count INTEGER,
+  status TEXT DEFAULT 'new' CHECK (status IN ('new', 'emailed', 'converted', 'rejected', 'invalid')),
+  source TEXT DEFAULT 'google_places',
+  last_contacted_at TIMESTAMPTZ,
+  email_count INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_prospects_score ON prospects(global_score);
+CREATE INDEX IF NOT EXISTS idx_prospects_status ON prospects(status);
+CREATE INDEX IF NOT EXISTS idx_prospects_city ON prospects(city);
+
+-- Prospection campaigns
+CREATE TABLE IF NOT EXISTS prospection_campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  city TEXT NOT NULL,
+  sector TEXT NOT NULL,
+  max_results INTEGER DEFAULT 20,
+  results_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE prospects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prospection_campaigns ENABLE ROW LEVEL SECURITY;
+
+-- Policies permissives (l'acces est gere cote API via mot de passe admin)
+CREATE POLICY "prospects_insert_all" ON prospects FOR INSERT WITH CHECK (true);
+CREATE POLICY "prospects_select_all" ON prospects FOR SELECT USING (true);
+CREATE POLICY "prospects_update_all" ON prospects FOR UPDATE USING (true);
+CREATE POLICY "campaigns_all" ON prospection_campaigns FOR ALL USING (true) WITH CHECK (true);
+
+-- Apres avoir execute ce SQL dans Supabase, verifie que les nouvelles tables
+-- (prospects, prospection_campaigns) sont bien creees.
