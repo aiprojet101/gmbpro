@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 type Tab = 'overview' | 'clients' | 'prospection' | 'scans'
 
@@ -236,9 +236,28 @@ export default function AdminPage() {
   )
 }
 
+interface CitySuggestion { name: string; region: string; placeId: string }
+
+const SECTOR_SUGGESTIONS = [
+  'restaurant', 'boulangerie', 'coiffeur', 'pharmacie', 'pizzeria',
+  'salon de beaute', 'garage automobile', 'fleuriste', 'cabinet dentaire',
+  'opticien', 'plombier', 'electricien', 'agence immobiliere', 'bar',
+  'hotel', 'cabinet medical', 'epicerie', 'boucherie', 'tabac',
+]
+
 function ProspectionTab() {
   const [city, setCity] = useState('')
+  const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([])
+  const [showCitySug, setShowCitySug] = useState(false)
+  const cityRef = useRef<HTMLInputElement>(null)
+  const cityDropRef = useRef<HTMLDivElement>(null)
+  const cityDebRef = useRef<ReturnType<typeof setTimeout>>(null)
+
   const [sector, setSector] = useState('')
+  const [showSectorSug, setShowSectorSug] = useState(false)
+  const sectorRef = useRef<HTMLInputElement>(null)
+  const sectorDropRef = useRef<HTMLDivElement>(null)
+
   const [maxResults, setMaxResults] = useState(20)
   const [scanning, setScanning] = useState(false)
   const [scanMsg, setScanMsg] = useState('')
@@ -274,6 +293,43 @@ function ProspectionTab() {
   }, [page, filterCity, filterStatus, filterScore])
 
   useEffect(() => { load() }, [load])
+
+  // City autocomplete
+  const fetchCities = useCallback(async (q: string) => {
+    if (q.length < 2) { setCitySuggestions([]); return }
+    try {
+      const res = await fetch(`/api/cities?q=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setCitySuggestions(data.suggestions || [])
+      setShowCitySug(true)
+    } catch { setCitySuggestions([]) }
+  }, [])
+
+  const handleCityChange = (v: string) => {
+    setCity(v)
+    if (cityDebRef.current) clearTimeout(cityDebRef.current)
+    cityDebRef.current = setTimeout(() => fetchCities(v), 200)
+  }
+
+  // Click outside to close dropdowns
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (cityDropRef.current && !cityDropRef.current.contains(e.target as Node) &&
+          cityRef.current && !cityRef.current.contains(e.target as Node)) {
+        setShowCitySug(false)
+      }
+      if (sectorDropRef.current && !sectorDropRef.current.contains(e.target as Node) &&
+          sectorRef.current && !sectorRef.current.contains(e.target as Node)) {
+        setShowSectorSug(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filteredSectors = SECTOR_SUGGESTIONS.filter(s =>
+    s.toLowerCase().includes(sector.toLowerCase())
+  ).slice(0, 6)
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -344,22 +400,67 @@ function ProspectionTab() {
       <form onSubmit={handleScan} className="glass-card p-6 space-y-4">
         <h2 className="text-lg font-bold">Nouvelle campagne de prospection</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input
-            type="text"
-            value={city}
-            onChange={e => setCity(e.target.value)}
-            placeholder="Ville (ex: Lyon)"
-            required
-            className="px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-          />
-          <input
-            type="text"
-            value={sector}
-            onChange={e => setSector(e.target.value)}
-            placeholder="Secteur (ex: restaurant)"
-            required
-            className="px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
-          />
+          {/* City autocomplete */}
+          <div className="relative">
+            <input
+              ref={cityRef}
+              type="text"
+              value={city}
+              onChange={e => handleCityChange(e.target.value)}
+              onFocus={() => { if (citySuggestions.length) setShowCitySug(true) }}
+              placeholder="Ville (ex: Lyon)"
+              required
+              autoComplete="off"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
+            />
+            {showCitySug && citySuggestions.length > 0 && (
+              <div ref={cityDropRef} className="absolute left-0 right-0 top-full mt-2 z-30 rounded-xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 16px 48px rgba(0,0,0,0.4)' }}>
+                {citySuggestions.map((s, i) => (
+                  <button key={s.placeId} type="button"
+                    onClick={() => { setCity(s.name); setShowCitySug(false) }}
+                    className="w-full px-4 py-3 flex items-start gap-3 hover:bg-[var(--surface-elevated)] text-left cursor-pointer"
+                    style={{ borderBottom: i < citySuggestions.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <svg className="w-4 h-4 text-primary mt-1 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--text)] truncate">{s.name}</p>
+                      {s.region && <p className="text-xs text-[var(--text-muted)] truncate">{s.region}</p>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Sector autocomplete (static list) */}
+          <div className="relative">
+            <input
+              ref={sectorRef}
+              type="text"
+              value={sector}
+              onChange={e => { setSector(e.target.value); setShowSectorSug(true) }}
+              onFocus={() => setShowSectorSug(true)}
+              placeholder="Secteur (ex: restaurant)"
+              required
+              autoComplete="off"
+              className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
+            />
+            {showSectorSug && filteredSectors.length > 0 && (
+              <div ref={sectorDropRef} className="absolute left-0 right-0 top-full mt-2 z-30 rounded-xl overflow-hidden max-h-72 overflow-y-auto" style={{ background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 16px 48px rgba(0,0,0,0.4)' }}>
+                {filteredSectors.map((s, i) => (
+                  <button key={s} type="button"
+                    onClick={() => { setSector(s); setShowSectorSug(false) }}
+                    className="w-full px-4 py-2.5 hover:bg-[var(--surface-elevated)] text-left cursor-pointer text-sm text-[var(--text)] capitalize"
+                    style={{ borderBottom: i < filteredSectors.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <input
             type="number"
             value={maxResults}
