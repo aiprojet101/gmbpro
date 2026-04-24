@@ -345,7 +345,8 @@ function ProspectionTab() {
       })
       const json = await res.json()
       if (res.ok) {
-        setScanMsg(`${json.results} prospects trouves et sauvegardes`)
+        const errStr = json.errors?.length ? ` | Erreurs : ${json.errors.join(' | ')}` : ''
+        setScanMsg(`${json.results}/${json.found} prospects sauvegardes${errStr}`)
         load()
       } else {
         setScanMsg(`Erreur : ${json.error || 'inconnue'}`)

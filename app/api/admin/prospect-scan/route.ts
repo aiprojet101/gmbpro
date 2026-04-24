@@ -158,6 +158,7 @@ export async function POST(req: NextRequest) {
 
   const toProcess = allResults.slice(0, limit)
   let saved = 0
+  const errors: string[] = []
 
   // 3. Fetch details + score each
   for (const result of toProcess) {
@@ -172,7 +173,10 @@ export async function POST(req: NextRequest) {
         `https://maps.googleapis.com/maps/api/place/details/json?place_id=${result.place_id}&fields=${fields}&language=fr&key=${apiKey}`
       )
       const detailsData = await detailsRes.json()
-      if (detailsData.status !== 'OK' || !detailsData.result) continue
+      if (detailsData.status !== 'OK' || !detailsData.result) {
+        errors.push(`details_${detailsData.status || 'unknown'}`)
+        continue
+      }
 
       const place: PlaceDetails = detailsData.result
       const score = computeScore(place)
@@ -201,10 +205,16 @@ export async function POST(req: NextRequest) {
           .from('prospects')
           .upsert(prospect, { onConflict: 'place_id' })
         if (!error) saved++
-        else console.error('Upsert error:', error.message)
+        else {
+          console.error('Upsert error:', error.message)
+          if (errors.length < 3) errors.push(`upsert: ${error.message}`)
+        }
+      } else {
+        if (errors.length < 3) errors.push('supabase_client_null')
       }
     } catch (err) {
       console.error('Detail/save error:', err)
+      if (errors.length < 3) errors.push(`exception: ${err instanceof Error ? err.message : 'unknown'}`)
     }
   }
 
@@ -224,5 +234,6 @@ export async function POST(req: NextRequest) {
     campaignId,
     results: saved,
     found: toProcess.length,
+    errors: errors.length > 0 ? errors : undefined,
   })
 }
