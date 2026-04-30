@@ -12,7 +12,7 @@ function getSupabase() {
   return createClient(url, key)
 }
 
-const FROM = 'GmbPro <onboarding@resend.dev>'
+const FROM = 'GmbPro <contact@gmbpro.fr>'
 
 export async function POST(req: NextRequest) {
   let body: { prospectId?: string; email?: string; adminPassword?: string }
