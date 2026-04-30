@@ -268,6 +268,9 @@ function ProspectionTab() {
   const [data, setData] = useState<ProspectsResponse | null>(null)
   const [scrapingEmails, setScrapingEmails] = useState(false)
   const [scrapeMsg, setScrapeMsg] = useState('')
+  const [cronRunning, setCronRunning] = useState(false)
+  const [cronMsg, setCronMsg] = useState('')
+  const [nextPair, setNextPair] = useState<{ city: string; sector: string; index: number; total: number } | null>(null)
   const [filterCity, setFilterCity] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterScore, setFilterScore] = useState<'all' | 'bad' | 'medium' | 'good'>('all')
@@ -385,6 +388,42 @@ function ProspectionTab() {
       setScrapeMsg('Erreur reseau')
     } finally {
       setScrapingEmails(false)
+    }
+  }
+
+  // Load next auto-prospection pair
+  useEffect(() => {
+    fetch('/api/admin/run-auto-prospect')
+      .then(r => r.json())
+      .then(j => { if (j.pair) setNextPair(j.pair) })
+      .catch(() => {})
+  }, [])
+
+  const handleRunCronNow = async () => {
+    const pwd = sessionStorage.getItem('gmbpro_admin')
+    if (!pwd) return
+    setCronRunning(true)
+    setCronMsg('Cron en cours... (peut prendre 60-90s)')
+    try {
+      const res = await fetch('/api/admin/run-auto-prospect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword: pwd }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        const p = json.pair
+        const s = json.scan || {}
+        const sc = json.scrape || {}
+        setCronMsg(`${s.results || 0} prospects ajoutes pour ${p.city}/${p.sector} | ${sc.found || 0} emails trouves`)
+        load()
+      } else {
+        setCronMsg(`Erreur : ${json.error || 'inconnue'}`)
+      }
+    } catch {
+      setCronMsg('Erreur reseau')
+    } finally {
+      setCronRunning(false)
     }
   }
 
@@ -624,13 +663,35 @@ function ProspectionTab() {
           >
             {scrapingEmails ? 'Recherche...' : 'Trouver les emails (10 prospects)'}
           </button>
+          <button
+            type="button"
+            onClick={handleRunCronNow}
+            disabled={cronRunning}
+            className="btn-outline justify-center"
+            title="Execute le meme job que le cron nocturne"
+          >
+            {cronRunning ? 'Cron...' : 'Test cron auto-prospection'}
+          </button>
           {scrapeMsg && (
             <p className={`text-sm ${scrapingEmails ? 'text-[var(--text-muted)]' : 'text-[var(--primary-light)]'}`}>
               {scrapingEmails && <span className="inline-block animate-spin mr-2">o</span>}
               {scrapeMsg}
             </p>
           )}
+          {cronMsg && (
+            <p className={`text-sm ${cronRunning ? 'text-[var(--text-muted)]' : 'text-[var(--primary-light)]'}`}>
+              {cronRunning && <span className="inline-block animate-spin mr-2">o</span>}
+              {cronMsg}
+            </p>
+          )}
         </div>
+        {nextPair && (
+          <div className="pt-3 border-t border-[var(--border)] text-sm text-[var(--text-muted)]">
+            <span className="font-semibold text-[var(--text)]">Prochaine campagne automatique :</span>{' '}
+            <span className="capitalize">{nextPair.sector}</span> a {nextPair.city}{' '}
+            <span className="text-xs">({nextPair.index + 1}/{nextPair.total}, cron 03:00 UTC)</span>
+          </div>
+        )}
       </form>
 
       {/* Filters */}
