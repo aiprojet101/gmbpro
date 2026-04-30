@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
     failed_count: prospect.failed_count ?? 0,
     rating: prospect.rating,
     review_count: prospect.review_count,
+    place_id: prospect.place_id,
   })
 
   const resend = new Resend(apiKey)

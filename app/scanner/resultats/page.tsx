@@ -177,13 +177,30 @@ function ResultsContent() {
   const searchParams = useSearchParams();
   const name = searchParams.get("name") || "Mon etablissement";
   const city = searchParams.get("city") || "Paris";
+  const placeId = searchParams.get("placeId");
   const [audit, setAudit] = useState<AuditResult | null>(null);
   const [copied, setCopied] = useState(false);
   const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
 
   useEffect(() => {
-    setAudit(generateAudit(name, city));
-  }, [name, city]);
+    let cancelled = false;
+    (async () => {
+      // If placeId provided, try real audit API first
+      if (placeId) {
+        try {
+          const res = await fetch(`/api/audit?placeId=${encodeURIComponent(placeId)}&name=${encodeURIComponent(name)}&city=${encodeURIComponent(city)}`);
+          const data = await res.json();
+          if (!cancelled && data.audit && !data.fallback) {
+            setAudit(data.audit);
+            return;
+          }
+        } catch { /* fallback to mock */ }
+      }
+      // Fallback: mock audit
+      if (!cancelled) setAudit(generateAudit(name, city));
+    })();
+    return () => { cancelled = true; };
+  }, [name, city, placeId]);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
