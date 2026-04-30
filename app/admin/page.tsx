@@ -266,6 +266,8 @@ function ProspectionTab() {
   const [scanMsg, setScanMsg] = useState('')
 
   const [data, setData] = useState<ProspectsResponse | null>(null)
+  const [scrapingEmails, setScrapingEmails] = useState(false)
+  const [scrapeMsg, setScrapeMsg] = useState('')
   const [filterCity, setFilterCity] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterScore, setFilterScore] = useState<'all' | 'bad' | 'medium' | 'good'>('all')
@@ -358,6 +360,31 @@ function ProspectionTab() {
       setScanMsg('Erreur reseau')
     } finally {
       setScanning(false)
+    }
+  }
+
+  const handleScrapeEmails = async () => {
+    const pwd = sessionStorage.getItem('gmbpro_admin')
+    if (!pwd) return
+    setScrapingEmails(true)
+    setScrapeMsg('Recherche emails en cours... (peut prendre 30-50s)')
+    try {
+      const res = await fetch('/api/admin/scrape-prospect-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPassword: pwd, limit: 10 }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setScrapeMsg(`${json.found} emails trouves sur ${json.processed} sites visites`)
+        load()
+      } else {
+        setScrapeMsg(`Erreur : ${json.error || 'inconnue'}`)
+      }
+    } catch {
+      setScrapeMsg('Erreur reseau')
+    } finally {
+      setScrapingEmails(false)
     }
   }
 
@@ -530,6 +557,22 @@ function ProspectionTab() {
             {scanMsg}
           </p>
         )}
+        <div className="pt-3 border-t border-[var(--border)] flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleScrapeEmails}
+            disabled={scrapingEmails}
+            className="btn-outline justify-center"
+          >
+            {scrapingEmails ? 'Recherche...' : 'Trouver les emails (10 prospects)'}
+          </button>
+          {scrapeMsg && (
+            <p className={`text-sm ${scrapingEmails ? 'text-[var(--text-muted)]' : 'text-[var(--primary-light)]'}`}>
+              {scrapingEmails && <span className="inline-block animate-spin mr-2">o</span>}
+              {scrapeMsg}
+            </p>
+          )}
+        </div>
       </form>
 
       {/* Filters */}
