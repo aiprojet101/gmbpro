@@ -241,11 +241,12 @@ export default function Home() {
             <RadarIcon className="w-7 h-7 text-primary" />
             <span className="text-xl font-extrabold text-[var(--text)]">GmbPro</span>
           </button>
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-6">
             <button onClick={() => scrollTo("features")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer">Fonctionnalites</button>
             <button onClick={() => scrollTo("pricing")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer">Tarifs</button>
             <button onClick={() => scrollTo("faq")} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer">FAQ</button>
-            <a href="/scanner" className="btn-primary text-sm !py-2 !px-5 cursor-pointer inline-flex items-center">Scanner ma fiche</a>
+            <a href="/connexion" className="text-sm text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer">Connexion</a>
+            <a href="/inscription" className="btn-primary text-sm !py-2 !px-5 cursor-pointer inline-flex items-center">Creer un compte</a>
           </div>
           {/* Mobile menu button */}
           <button
@@ -268,7 +269,8 @@ export default function Home() {
             <button onClick={() => { scrollTo("features"); setMenuOpen(false); }} className="text-sm text-[var(--text-muted)] text-left cursor-pointer">Fonctionnalites</button>
             <button onClick={() => { scrollTo("pricing"); setMenuOpen(false); }} className="text-sm text-[var(--text-muted)] text-left cursor-pointer">Tarifs</button>
             <button onClick={() => { scrollTo("faq"); setMenuOpen(false); }} className="text-sm text-[var(--text-muted)] text-left cursor-pointer">FAQ</button>
-            <a href="/scanner" onClick={() => setMenuOpen(false)} className="btn-primary text-sm !py-2 text-center cursor-pointer">Scanner ma fiche</a>
+            <a href="/connexion" onClick={() => setMenuOpen(false)} className="text-sm text-[var(--text-muted)] text-left cursor-pointer">Connexion</a>
+            <a href="/inscription" onClick={() => setMenuOpen(false)} className="btn-primary text-sm !py-2 text-center cursor-pointer">Creer un compte</a>
           </div>
         )}
       </header>
