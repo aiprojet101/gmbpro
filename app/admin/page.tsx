@@ -394,6 +394,64 @@ function ProspectionTab() {
   const [sending, setSending] = useState(false)
   const [sendMsg, setSendMsg] = useState('')
 
+  // Bulk send state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; currentName: string } | null>(null)
+  const [bulkResult, setBulkResult] = useState<{ sent: number; errors: number } | null>(null)
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const visibleSelectable = (data?.prospects || []).filter(p => p.email && p.status === 'new')
+  const allVisibleSelected = visibleSelectable.length > 0 && visibleSelectable.every(p => selectedIds.has(p.id))
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (allVisibleSelected) {
+        visibleSelectable.forEach(p => next.delete(p.id))
+      } else {
+        visibleSelectable.forEach(p => next.add(p.id))
+      }
+      return next
+    })
+  }
+
+  const bulkSend = async () => {
+    const pwd = sessionStorage.getItem('gmbpro_admin')
+    if (!pwd) return
+    const ids = Array.from(selectedIds)
+    const prospects = (data?.prospects || []).filter(p => ids.includes(p.id) && p.email)
+    setBulkConfirmOpen(false)
+    setBulkResult(null)
+    let sent = 0, errors = 0
+    for (let i = 0; i < prospects.length; i++) {
+      const p = prospects[i]
+      setBulkProgress({ current: i + 1, total: prospects.length, currentName: p.business_name })
+      try {
+        const res = await fetch('/api/admin/send-prospect-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prospectId: p.id, email: p.email, adminPassword: pwd }),
+        })
+        if (res.ok) sent++; else errors++
+      } catch { errors++ }
+      if (i < prospects.length - 1) await new Promise(r => setTimeout(r, 600))
+    }
+    setBulkProgress(null)
+    setBulkResult({ sent, errors })
+    setSelectedIds(new Set())
+    load()
+  }
+
+  const selectedProspects = (data?.prospects || []).filter(p => selectedIds.has(p.id))
+
   const openEmailModal = (p: Prospect) => {
     setEmailModal(p)
     setEmailInput(p.email || '')
@@ -610,6 +668,32 @@ function ProspectionTab() {
         </button>
       </div>
 
+      {/* Sticky action bar (bulk send) */}
+      {selectedIds.size > 0 && (
+        <div
+          className="sticky top-0 z-20 mb-4 glass-card p-4 flex items-center justify-between"
+          style={{ animation: 'slideDown 0.3s ease' }}
+        >
+          <div className="text-sm">
+            <strong>{selectedIds.size}</strong> prospect{selectedIds.size > 1 ? 's' : ''} selectionne{selectedIds.size > 1 ? 's' : ''}
+          </div>
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
+            >
+              Annuler la selection
+            </button>
+            <button
+              onClick={() => setBulkConfirmOpen(true)}
+              className="btn-primary text-sm !py-2 !px-4"
+            >
+              Envoyer email a la selection ({selectedIds.size})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Prospects list */}
       <div className="glass-card p-4 overflow-x-auto">
         {loading ? (
@@ -618,6 +702,16 @@ function ProspectionTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border)]">
+                <th className="p-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAllVisible}
+                    disabled={visibleSelectable.length === 0}
+                    aria-label="Tout selectionner"
+                    className="cursor-pointer"
+                  />
+                </th>
                 <th className="p-3">Business</th>
                 <th className="p-3">Ville</th>
                 <th className="p-3">Secteur</th>
@@ -635,8 +729,19 @@ function ProspectionTab() {
                 const statusLabel = p.status === 'emailed' && p.last_contacted_at
                   ? `emailed (${fmtDate(p.last_contacted_at)})`
                   : p.status
+                const canSelect = !!p.email && p.status === 'new'
                 return (
                 <tr key={p.id} className={i % 2 === 0 ? 'bg-[var(--surface)]' : ''}>
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(p.id)}
+                      onChange={() => toggleSelect(p.id)}
+                      disabled={!canSelect}
+                      title={!p.email ? "Pas d'email" : p.status !== 'new' ? 'Deja contacte' : ''}
+                      className={`cursor-pointer ${!canSelect ? 'opacity-30 cursor-not-allowed' : ''}`}
+                    />
+                  </td>
                   <td className="p-3 font-medium">{p.business_name}</td>
                   <td className="p-3">{p.city}</td>
                   <td className="p-3">{p.sector || '-'}</td>
@@ -659,7 +764,7 @@ function ProspectionTab() {
                 )
               })}
               {(data?.prospects || []).length === 0 && (
-                <tr><td colSpan={9} className="p-6 text-center text-[var(--text-muted)]">Aucun prospect. Lance un scan pour en trouver.</td></tr>
+                <tr><td colSpan={10} className="p-6 text-center text-[var(--text-muted)]">Aucun prospect. Lance un scan pour en trouver.</td></tr>
               )}
             </tbody>
           </table>
@@ -743,6 +848,113 @@ function ProspectionTab() {
                 {sending ? 'Envoi...' : 'Envoyer'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk confirm modal */}
+      {bulkConfirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setBulkConfirmOpen(false)}
+        >
+          <div
+            className="glass-card p-6 w-full max-w-lg space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold">Confirmer l&apos;envoi groupe</h3>
+            <p className="text-sm text-[var(--text-muted)]">
+              Vous allez envoyer un email a <strong className="text-[var(--text)]">{selectedProspects.length}</strong> prospect{selectedProspects.length > 1 ? 's' : ''}.
+            </p>
+            <div className="p-3 rounded-lg bg-[var(--surface)] text-sm space-y-1">
+              {selectedProspects.slice(0, 3).map(p => (
+                <div key={p.id} className="text-[var(--text)]">- {p.business_name}</div>
+              ))}
+              {selectedProspects.length > 3 && (
+                <div className="text-[var(--text-muted)] italic">...et {selectedProspects.length - 3} autre{selectedProspects.length - 3 > 1 ? 's' : ''}</div>
+              )}
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">
+              Envoi sequentiel avec un delai de 600ms entre chaque email (rate limit Resend).
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setBulkConfirmOpen(false)}
+                className="flex-1 px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-sm hover:bg-[var(--surface-elevated)]"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={bulkSend}
+                className="btn-primary flex-1 justify-center"
+              >
+                Confirmer l&apos;envoi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk progress modal */}
+      {bulkProgress && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)' }}
+        >
+          <div className="glass-card p-6 w-full max-w-lg space-y-5">
+            <h3 className="text-lg font-bold">Envoi en cours...</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-[var(--text-muted)]">Progression</span>
+                <span className="font-bold">{bulkProgress.current} / {bulkProgress.total}</span>
+              </div>
+              <div className="w-full h-3 rounded-full bg-[var(--surface)] overflow-hidden">
+                <div
+                  className="h-full bg-[var(--primary)] transition-all duration-300"
+                  style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="text-sm">
+              <div className="text-[var(--text-muted)] mb-1">Envoi a :</div>
+              <div className="font-medium text-[var(--primary-light)] truncate">{bulkProgress.currentName}</div>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] italic">
+              Merci de ne pas fermer cette fenetre pendant l&apos;envoi.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk result modal */}
+      {bulkResult && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setBulkResult(null)}
+        >
+          <div
+            className="glass-card p-6 w-full max-w-md space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold">Resultat de l&apos;envoi</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-4 rounded-lg bg-[var(--surface)] text-center">
+                <div className="text-3xl font-bold text-green-400">{bulkResult.sent}</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">Envoye{bulkResult.sent > 1 ? 's' : ''}</div>
+              </div>
+              <div className="p-4 rounded-lg bg-[var(--surface)] text-center">
+                <div className="text-3xl font-bold text-red-400">{bulkResult.errors}</div>
+                <div className="text-xs text-[var(--text-muted)] mt-1">Erreur{bulkResult.errors > 1 ? 's' : ''}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => setBulkResult(null)}
+              className="btn-primary w-full justify-center"
+            >
+              Fermer
+            </button>
           </div>
         </div>
       )}
