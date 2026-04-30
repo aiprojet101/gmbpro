@@ -11,9 +11,12 @@ interface Prospect {
   city: string
   sector: string | null
   global_score: number | null
+  failed_count: number | null
   rating: number | null
   review_count: number | null
   status: string
+  email: string | null
+  last_contacted_at: string | null
   created_at: string
 }
 
@@ -358,16 +361,61 @@ function ProspectionTab() {
     }
   }
 
-  const markContacted = async (id: string) => {
+  // Email modal state
+  const [emailModal, setEmailModal] = useState<Prospect | null>(null)
+  const [emailInput, setEmailInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sendMsg, setSendMsg] = useState('')
+
+  const openEmailModal = (p: Prospect) => {
+    setEmailModal(p)
+    setEmailInput(p.email || '')
+    setSendMsg('')
+  }
+
+  const closeEmailModal = () => {
+    setEmailModal(null)
+    setEmailInput('')
+    setSendMsg('')
+  }
+
+  const sendProspectEmail = async () => {
+    if (!emailModal) return
     const pwd = sessionStorage.getItem('gmbpro_admin')
     if (!pwd) return
-    await fetch(`/api/admin/prospects?id=${id}&authToken=${pwd}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'emailed' }),
-    })
-    load()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)) {
+      setSendMsg('Email invalide')
+      return
+    }
+    setSending(true)
+    setSendMsg('Envoi en cours...')
+    try {
+      const res = await fetch('/api/admin/send-prospect-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prospectId: emailModal.id,
+          email: emailInput,
+          adminPassword: pwd,
+        }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setSendMsg('Email envoye avec succes')
+        setTimeout(() => { closeEmailModal(); load() }, 800)
+      } else {
+        setSendMsg(`Erreur : ${json.error || 'inconnue'}`)
+      }
+    } catch {
+      setSendMsg('Erreur reseau')
+    } finally {
+      setSending(false)
+    }
   }
+
+  const previewSubject = emailModal
+    ? `${emailModal.business_name}, votre fiche Google a ${emailModal.global_score ?? 0}/100 — voici comment la corriger`
+    : ''
 
   const scoreColor = (s: number | null) => {
     if (s == null) return 'text-[var(--text-muted)]'
@@ -375,6 +423,8 @@ function ProspectionTab() {
     if (s < 70) return 'text-yellow-400'
     return 'text-green-400'
   }
+
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   const kpis = data?.kpis || { total: 0, avgScore: 0, toContact: 0 }
   const totalPages = data ? Math.ceil(data.total / PER_PAGE) : 0
@@ -531,12 +581,18 @@ function ProspectionTab() {
                 <th className="p-3">Score</th>
                 <th className="p-3">Note</th>
                 <th className="p-3">Avis</th>
+                <th className="p-3">Email</th>
                 <th className="p-3">Statut</th>
                 <th className="p-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {(data?.prospects || []).map((p, i) => (
+              {(data?.prospects || []).map((p, i) => {
+                const statusIcon = p.status === 'emailed' ? '🟢' : p.status === 'rejected' ? '🔴' : '⚪'
+                const statusLabel = p.status === 'emailed' && p.last_contacted_at
+                  ? `emailed (${fmtDate(p.last_contacted_at)})`
+                  : p.status
+                return (
                 <tr key={p.id} className={i % 2 === 0 ? 'bg-[var(--surface)]' : ''}>
                   <td className="p-3 font-medium">{p.business_name}</td>
                   <td className="p-3">{p.city}</td>
@@ -544,28 +600,109 @@ function ProspectionTab() {
                   <td className={`p-3 font-bold ${scoreColor(p.global_score)}`}>{p.global_score ?? '-'}</td>
                   <td className="p-3">{p.rating ?? '-'}</td>
                   <td className="p-3">{p.review_count ?? '-'}</td>
+                  <td className="p-3 text-xs text-[var(--text-muted)]">{p.email || '—'}</td>
                   <td className="p-3">
-                    <span className="text-xs px-2 py-1 rounded bg-[var(--surface-elevated)]">{p.status}</span>
+                    <span className="text-xs px-2 py-1 rounded bg-[var(--surface-elevated)]">{statusIcon} {statusLabel}</span>
                   </td>
                   <td className="p-3">
-                    {p.status === 'new' && (
-                      <button
-                        onClick={() => markContacted(p.id)}
-                        className="text-xs text-[var(--primary-light)] hover:underline"
-                      >
-                        Marquer contacte
-                      </button>
-                    )}
+                    <button
+                      onClick={() => openEmailModal(p)}
+                      className="text-xs text-[var(--primary-light)] hover:underline"
+                    >
+                      {p.status === 'emailed' ? 'Renvoyer email' : 'Envoyer email'}
+                    </button>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
               {(data?.prospects || []).length === 0 && (
-                <tr><td colSpan={8} className="p-6 text-center text-[var(--text-muted)]">Aucun prospect. Lance un scan pour en trouver.</td></tr>
+                <tr><td colSpan={9} className="p-6 text-center text-[var(--text-muted)]">Aucun prospect. Lance un scan pour en trouver.</td></tr>
               )}
             </tbody>
           </table>
         )}
       </div>
+
+      {/* Email modal */}
+      {emailModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+          onClick={closeEmailModal}
+        >
+          <div
+            className="glass-card p-6 w-full max-w-lg space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold">Envoyer email de prospection</h3>
+                <p className="text-sm text-[var(--text-muted)] mt-1">
+                  {emailModal.business_name} · {emailModal.city}
+                </p>
+              </div>
+              <button
+                onClick={closeEmailModal}
+                className="text-[var(--text-muted)] hover:text-[var(--text)] text-xl leading-none"
+              >×</button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="p-3 rounded-lg bg-[var(--surface)]">
+                <div className="text-xs text-[var(--text-muted)]">Score</div>
+                <div className={`font-bold text-lg ${scoreColor(emailModal.global_score)}`}>
+                  {emailModal.global_score ?? '-'}/100
+                </div>
+              </div>
+              <div className="p-3 rounded-lg bg-[var(--surface)]">
+                <div className="text-xs text-[var(--text-muted)]">Criteres a corriger</div>
+                <div className="font-bold text-lg">{emailModal.failed_count ?? '-'}</div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-[var(--text-muted)]">Email destinataire</label>
+              <input
+                type="email"
+                value={emailInput}
+                onChange={e => setEmailInput(e.target.value)}
+                placeholder="contact@business.fr"
+                className="w-full px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-xs text-[var(--text-muted)]">Apercu sujet</div>
+              <div className="text-sm p-3 rounded-lg bg-[var(--surface)] border border-[var(--border)] italic">
+                {previewSubject}
+              </div>
+            </div>
+
+            {sendMsg && (
+              <p className={`text-sm ${sendMsg.startsWith('Erreur') ? 'text-red-400' : 'text-[var(--primary-light)]'}`}>
+                {sendMsg}
+              </p>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={closeEmailModal}
+                disabled={sending}
+                className="flex-1 px-4 py-3 rounded-xl bg-[var(--surface)] border border-[var(--border)] text-sm hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={sendProspectEmail}
+                disabled={sending || !emailInput}
+                className="btn-primary flex-1 justify-center disabled:opacity-50"
+              >
+                {sending ? 'Envoi...' : 'Envoyer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
