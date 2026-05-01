@@ -47,7 +47,8 @@ Regles :
 - Si negatif: reconnaitre, ne pas etre defensif, proposer une suite (contact direct, amelioration)
 - Si positif: remercier sincerement, inviter a revenir
 - Pas d'emoji
-- Signer naturellement au nom de l'equipe
+- INTERDIT : inventer un prenom de gerant, signer avec un prenom imaginaire, ou ajouter "et toute l'equipe"
+- Signer uniquement avec "L'equipe ${businessName}" ou simplement "${businessName}" — JAMAIS un prenom
 
 Retourne UNIQUEMENT le texte de la reponse, sans guillemets, sans prefixe, sans commentaire.`
 
