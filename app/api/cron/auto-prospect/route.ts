@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import { runProspectionScan } from '@/app/lib/prospection-core'
 import { scrapeProspectEmails } from '@/app/lib/email-scraper'
+import { autoSendProspectEmails } from '@/app/lib/auto-send-prospects'
 import { getNextDiversified, getNextPair } from '@/app/lib/prospection-queue'
 import { createClient } from '@supabase/supabase-js'
 
@@ -56,7 +57,17 @@ async function runOnce() {
     scrape = { processed: r.processed, found: r.found, total: r.total, error: r.error }
   }
 
-  return { ok: !scan.error, pair, scan, scrape, durationMs: Date.now() - startedAt }
+  // Auto-send up to 10 prospection emails to scraped prospects with score < 70
+  let autosend: { sent: number; errors: number; skipped: number; errorDetails?: string[] } = {
+    sent: 0, errors: 0, skipped: 0,
+  }
+  try {
+    autosend = await autoSendProspectEmails({ limit: 10 })
+  } catch (e) {
+    console.error('[cron] autoSend error:', e)
+  }
+
+  return { ok: !scan.error, pair, scan, scrape, autosend, durationMs: Date.now() - startedAt }
 }
 
 export async function GET(req: NextRequest) {
