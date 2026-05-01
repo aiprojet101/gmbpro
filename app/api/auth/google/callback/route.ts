@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 import { getServerSupabase } from '../../../../lib/supabase-server';
 import { exchangeCodeForTokens, getUserInfo, getRedirectUri } from '../../../../lib/google-oauth';
 
@@ -16,20 +17,35 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL('/dashboard?gmb_error=missing_params', req.url));
   }
 
-  // Verify CSRF state
+  // Verify CSRF state + retrieve user_id stored at start
   const cookieStore = await cookies();
   const stateCookie = cookieStore.get('gmb_oauth_state')?.value;
+  const userIdCookie = cookieStore.get('gmb_oauth_user')?.value;
   if (!stateCookie || stateCookie !== state) {
     return NextResponse.redirect(new URL('/dashboard?gmb_error=invalid_state', req.url));
   }
   cookieStore.delete('gmb_oauth_state');
+  cookieStore.delete('gmb_oauth_user');
 
-  // Verify user logged in
-  const supabase = await getServerSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
+  // Try server-side session first; fallback to user_id cookie set by /start
+  let user = null as null | { id: string };
+  const ssrSupabase = await getServerSupabase();
+  const { data: { user: ssrUser } } = await ssrSupabase.auth.getUser();
+  if (ssrUser) {
+    user = { id: ssrUser.id };
+  } else if (userIdCookie) {
+    user = { id: userIdCookie };
+  }
+
   if (!user) {
     return NextResponse.redirect(new URL('/connexion?next=/dashboard', req.url));
   }
+
+  // Use service-role-like (anon) client for DB writes (RLS allows owner via auth, but here we trust the cookie)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.GMBPRO_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.GMBPRO_SUPABASE_ANON_KEY || ''
+  );
 
   try {
     const redirectUri = getRedirectUri(req);
