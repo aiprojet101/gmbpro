@@ -84,3 +84,20 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ ok: true })
 }
+
+export async function DELETE(req: NextRequest) {
+  if (!checkAuth(req)) return NextResponse.json({ error: 'Non autorise' }, { status: 401 })
+
+  const supabase = getSupabase()
+  if (!supabase) return NextResponse.json({ error: 'Supabase non configure' }, { status: 500 })
+
+  const id = req.nextUrl.searchParams.get('id')
+  const ids = req.nextUrl.searchParams.get('ids') // comma-separated for bulk
+  if (!id && !ids) return NextResponse.json({ error: 'id ou ids requis' }, { status: 400 })
+
+  const target = ids ? ids.split(',').map(s => s.trim()).filter(Boolean) : [id!]
+  const { error, count } = await supabase.from('prospects').delete({ count: 'exact' }).in('id', target)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true, deleted: count ?? 0 })
+}

@@ -818,12 +818,26 @@ function ProspectionTab() {
                     <span className="text-xs px-2 py-1 rounded bg-[var(--surface-elevated)]">{statusIcon} {statusLabel}</span>
                   </td>
                   <td className="p-3">
-                    <button
-                      onClick={() => openEmailModal(p)}
-                      className="text-xs text-[var(--primary-light)] hover:underline"
-                    >
-                      {p.status === 'emailed' ? 'Renvoyer email' : 'Envoyer email'}
-                    </button>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => openEmailModal(p)}
+                        className="text-xs text-[var(--primary-light)] hover:underline text-left"
+                      >
+                        {p.status === 'emailed' ? 'Renvoyer email' : 'Envoyer email'}
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Supprimer ${p.business_name} ?`)) return
+                          const pwd = sessionStorage.getItem('gmbpro_admin')
+                          if (!pwd) return
+                          await fetch(`/api/admin/prospects?id=${p.id}&authToken=${pwd}`, { method: 'DELETE' })
+                          load()
+                        }}
+                        className="text-xs text-red-400 hover:underline text-left"
+                      >
+                        Supprimer
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 )
