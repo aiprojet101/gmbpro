@@ -345,7 +345,7 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
         if (!accountId) {
           const aRes = await fetch('/api/google/accounts', { headers: authHeaders });
           const aJson = await aRes.json();
-          if (!aRes.ok) throw new Error(aJson.error || 'accounts_error');
+          if (!aRes.ok) throw new Error(`${aJson.error || 'accounts_error'}${aJson.detail ? ' — ' + (typeof aJson.detail === 'string' ? aJson.detail.slice(0, 200) : JSON.stringify(aJson.detail).slice(0, 200)) : ''}`);
           setAccounts(aJson.accounts || []);
           if ((aJson.accounts || []).length === 1) {
             accountId = aJson.accounts[0].name;
@@ -355,7 +355,7 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
         if (accountId) {
           const lRes = await fetch(`/api/google/locations?accountId=${encodeURIComponent(accountId)}`, { headers: authHeaders });
           const lJson = await lRes.json();
-          if (!lRes.ok) throw new Error(lJson.error || 'locations_error');
+          if (!lRes.ok) throw new Error(`${lJson.error || 'locations_error'}${lJson.detail ? ' — ' + (typeof lJson.detail === 'string' ? lJson.detail.slice(0, 200) : JSON.stringify(lJson.detail).slice(0, 200)) : ''}`);
           setLocations(lJson.locations || []);
         }
       } catch (e) {
