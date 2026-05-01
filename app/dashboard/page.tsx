@@ -650,86 +650,453 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
   );
 }
 
+interface AIPost {
+  id: string;
+  title: string;
+  content: string;
+  status: 'draft' | 'scheduled' | 'published' | 'failed';
+  scheduled_at: string | null;
+  published_at: string | null;
+  created_at: string;
+}
+
+function postType(title: string): { type: string; cleanTitle: string; color: string } {
+  const m = title.match(/^\[(update|offer|event|product)\]\s*(.+)$/i);
+  if (!m) return { type: 'update', cleanTitle: title, color: 'bg-blue-500/20 text-blue-400' };
+  const t = m[1].toLowerCase();
+  const colors: Record<string, string> = {
+    offer: 'bg-orange-500/20 text-orange-400',
+    event: 'bg-purple-500/20 text-purple-400',
+    product: 'bg-green-500/20 text-green-400',
+    update: 'bg-blue-500/20 text-blue-400',
+  };
+  return { type: t, cleanTitle: m[2], color: colors[t] || colors.update };
+}
+
+function formatFrDate(iso: string | null): string {
+  if (!iso) return 'Date non definie';
+  try {
+    return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  } catch { return iso; }
+}
+
 function PostsTab() {
+  const [posts, setPosts] = useState<AIPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/posts/list', { headers });
+      const j = await res.json();
+      if (res.ok) setPosts(j.posts || []);
+    } catch { /* ignore */ }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) };
+      const res = await fetch('/api/posts/generate', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ count: 4 }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Erreur de generation');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = async (post: AIPost) => {
+    const { cleanTitle } = postType(post.title);
+    const text = `${cleanTitle}\n\n${post.content}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(post.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch { /* ignore */ }
+  };
+
+  const handleMarkPublished = async (post: AIPost) => {
+    const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) };
+    const res = await fetch(`/api/posts/update?id=${post.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ status: 'published' }),
+    });
+    if (res.ok) await load();
+  };
+
+  const handleDelete = async (post: AIPost) => {
+    if (!confirm('Supprimer ce post ?')) return;
+    const headers = await authHeaders();
+    const res = await fetch(`/api/posts/delete?id=${post.id}`, { method: 'DELETE', headers });
+    if (res.ok) await load();
+  };
+
+  const statusLabel = (s: string) => {
+    const m: Record<string, { label: string; cls: string }> = {
+      draft: { label: 'Brouillon', cls: 'bg-gray-500/20 text-gray-400' },
+      scheduled: { label: 'Programme', cls: 'bg-blue-500/20 text-blue-400' },
+      published: { label: 'Publie', cls: 'bg-green-500/20 text-green-400' },
+      failed: { label: 'Echec', cls: 'bg-red-500/20 text-red-400' },
+    };
+    return m[s] || m.draft;
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-[var(--text)]">Posts Google</h3>
-        <button className="btn-primary text-sm !py-2 !px-4">Generer un nouveau post (IA)</button>
-      </div>
-      {/* Weekly grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {POSTS.map((p, i) => (
-          <div key={i} className="glass-card p-5">
-            <div className="w-full h-32 rounded-lg bg-[var(--surface-elevated)] mb-3 flex items-center justify-center">
-              <svg className="w-10 h-10 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <p className="text-sm font-medium text-[var(--text)] mb-1">{p.title}</p>
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-[var(--text-muted)]">{p.date}</span>
-              <StatusBadge status={p.status} />
-            </div>
-          </div>
-        ))}
-      </div>
-      {/* Phone preview */}
-      <div className="glass-card p-6">
-        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Apercu du prochain post</h4>
-        <div className="mx-auto w-72 rounded-3xl border-2 border-[var(--border)] p-4 bg-[var(--surface)]">
-          <div className="w-full h-40 rounded-xl bg-[var(--surface-elevated)] mb-3" />
-          <p className="text-sm font-semibold text-[var(--text)]">{POSTS[0].title}</p>
-          <p className="text-xs text-[var(--text-muted)] mt-1">Publie par Restaurant Le Comptoir</p>
-          <button className="w-full mt-3 text-xs py-2 rounded-lg bg-[var(--primary)] text-white font-medium">En savoir plus</button>
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h3 className="text-lg font-semibold text-[var(--text)]">Vos posts Google generes par IA</h3>
+          <p className="text-xs text-[var(--text-muted)] mt-1 max-w-xl">
+            Tant que la fiche n&apos;est pas connectee, vous devez copier/coller manuellement les posts dans Google. Quand l&apos;API sera approuvee, la publication sera automatique.
+          </p>
         </div>
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="btn-primary text-sm !py-2 !px-4 cursor-pointer disabled:opacity-50 inline-flex items-center gap-2"
+        >
+          {generating ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Generation en cours...
+            </>
+          ) : (
+            <>Generer 4 nouveaux posts</>
+          )}
+        </button>
       </div>
+
+      {error && (
+        <div className="glass-card p-4 border border-red-500/30 bg-red-500/5">
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
+
+      {loading && (
+        <div className="glass-card p-10 text-center">
+          <div className="w-8 h-8 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-[var(--text-muted)]">Chargement...</p>
+        </div>
+      )}
+
+      {!loading && posts.length === 0 && (
+        <div className="glass-card p-10 text-center">
+          <svg className="w-12 h-12 mx-auto mb-4 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <p className="text-sm text-[var(--text)] font-medium mb-1">Aucun post genere</p>
+          <p className="text-sm text-[var(--text-muted)]">
+            Cliquez sur &quot;Generer 4 nouveaux posts&quot; pour commencer.
+          </p>
+        </div>
+      )}
+
+      {!loading && posts.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {posts.map((p) => {
+            const { type, cleanTitle, color } = postType(p.title);
+            const st = statusLabel(p.status);
+            return (
+              <div key={p.id} className="glass-card p-5 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${color}`}>{type}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${st.cls}`}>{st.label}</span>
+                </div>
+                <p className="text-sm font-bold text-[var(--text)]">{cleanTitle}</p>
+                <p className="text-xs text-[var(--text-muted)] line-clamp-4 leading-relaxed">{p.content}</p>
+                <p className="text-xs text-[var(--text-muted)] italic">{formatFrDate(p.scheduled_at)}</p>
+                <div className="flex flex-wrap gap-2 mt-auto pt-2">
+                  <button
+                    onClick={() => handleCopy(p)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-white/5 transition-colors cursor-pointer text-[var(--text)]"
+                  >
+                    {copiedId === p.id ? 'Copie !' : 'Copier le texte'}
+                  </button>
+                  {p.status !== 'published' && (
+                    <button
+                      onClick={() => handleMarkPublished(p)}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors cursor-pointer"
+                    >
+                      Marquer publie
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDelete(p)}
+                    className="text-xs px-3 py-1.5 rounded-lg text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors cursor-pointer"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
+interface AIResponse {
+  id: string;
+  review_author: string | null;
+  review_rating: number | null;
+  review_text: string | null;
+  response_text: string;
+  status: 'draft' | 'approved' | 'published';
+  created_at: string;
+}
+
 function ReviewsTab() {
+  const [responses, setResponses] = useState<AIResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [author, setAuthor] = useState('');
+  const [rating, setRating] = useState(5);
+  const [text, setText] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const headers = await authHeaders();
+      const res = await fetch('/api/reviews/list', { headers });
+      const j = await res.json();
+      if (res.ok) setResponses(j.responses || []);
+    } catch { /* ignore */ }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleGenerate = async () => {
+    if (!text.trim()) {
+      setError('Veuillez saisir le texte de l\'avis.');
+      return;
+    }
+    setGenerating(true);
+    setError(null);
+    try {
+      const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) };
+      const res = await fetch('/api/reviews/generate-response', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          reviewAuthor: author.trim() || 'Client',
+          reviewRating: rating,
+          reviewText: text.trim(),
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Erreur');
+      setAuthor('');
+      setRating(5);
+      setText('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = async (r: AIResponse) => {
+    try {
+      await navigator.clipboard.writeText(r.response_text);
+      setCopiedId(r.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch { /* */ }
+  };
+
+  const handleSaveEdit = async (r: AIResponse) => {
+    const headers = { 'Content-Type': 'application/json', ...(await authHeaders()) };
+    const res = await fetch(`/api/reviews/update?id=${r.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ response_text: editText }),
+    });
+    if (res.ok) {
+      setEditingId(null);
+      await load();
+    }
+  };
+
+  const handleDelete = async (r: AIResponse) => {
+    if (!confirm('Supprimer cette reponse ?')) return;
+    const headers = await authHeaders();
+    const res = await fetch(`/api/reviews/update?id=${r.id}`, { method: 'DELETE', headers });
+    if (res.ok) await load();
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      <h3 className="text-lg font-semibold text-[var(--text)]">Avis clients</h3>
-      <div className="flex flex-col gap-4">
-        {ALL_REVIEWS.map((r, i) => (
-          <div key={i} className="glass-card p-5">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Stars count={r.stars} />
-                <span className="text-sm font-medium text-[var(--text)]">{r.name}</span>
-              </div>
-              <span className="text-xs text-[var(--text-muted)]">{r.date}</span>
-            </div>
-            <p className="text-sm text-[var(--text-muted)] mb-3">{r.text}</p>
-            {r.responded ? (
-              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
-                <p className="text-xs text-green-400 font-medium mb-1">Reponse generee par IA</p>
-                <p className="text-sm text-[var(--text-muted)]">Merci pour votre avis ! Nous sommes ravis que vous ayez apprecie votre experience.</p>
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button className="btn-primary text-xs !py-1.5 !px-3">Publier la reponse</button>
-                <button className="btn-outline text-xs !py-1.5 !px-3">Modifier</button>
-              </div>
-            )}
-          </div>
-        ))}
+      <div>
+        <h3 className="text-lg font-semibold text-[var(--text)]">Generation de reponses aux avis</h3>
+        <p className="text-xs text-[var(--text-muted)] mt-1 max-w-xl">
+          Saisissez les avis recus sur votre fiche pour generer des reponses IA. Quand l&apos;API sera approuvee, les avis seront recuperes automatiquement.
+        </p>
       </div>
-      <h3 className="text-lg font-semibold text-[var(--text)] mt-4">Questions</h3>
-      <div className="flex flex-col gap-4">
-        {QUESTIONS.map((q, i) => (
-          <div key={i} className="glass-card p-5">
-            <p className="text-sm font-medium text-[var(--text)] mb-1">{q.question}</p>
-            <p className="text-xs text-[var(--text-muted)] mb-3">Par {q.author} · {q.date}</p>
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
-              <p className="text-xs text-blue-400 font-medium mb-1">Reponse suggeree</p>
-              <p className="text-sm text-[var(--text-muted)]">{q.answer}</p>
+
+      {/* Form */}
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Nouvel avis a traiter</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Auteur de l&apos;avis</label>
+            <input
+              type="text"
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+              placeholder="Marie L."
+              className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Note</label>
+            <div className="flex gap-1 items-center">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setRating(n)}
+                  className="cursor-pointer"
+                  aria-label={`${n} etoiles`}
+                >
+                  <svg className="w-7 h-7" viewBox="0 0 20 20" fill={n <= rating ? '#F59E0B' : 'var(--surface-elevated)'}>
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                  </svg>
+                </button>
+              ))}
+              <span className="ml-2 text-sm text-[var(--text-muted)]">{rating}/5</span>
             </div>
           </div>
-        ))}
+        </div>
+        <div className="mb-4">
+          <label className="block text-xs text-[var(--text-muted)] mb-1">Texte de l&apos;avis</label>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Collez ici l'avis recu sur Google..."
+            rows={4}
+            className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm resize-none"
+          />
+        </div>
+        {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="btn-primary text-sm !py-2 !px-4 cursor-pointer disabled:opacity-50 inline-flex items-center gap-2"
+        >
+          {generating ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Generation...
+            </>
+          ) : (
+            <>Generer la reponse</>
+          )}
+        </button>
       </div>
+
+      {/* Results */}
+      {loading && (
+        <div className="glass-card p-10 text-center">
+          <div className="w-8 h-8 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-[var(--text-muted)]">Chargement...</p>
+        </div>
+      )}
+
+      {!loading && responses.length === 0 && (
+        <div className="glass-card p-8 text-center">
+          <p className="text-sm text-[var(--text-muted)]">Aucune reponse generee pour le moment.</p>
+        </div>
+      )}
+
+      {!loading && responses.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <h4 className="text-sm font-semibold text-[var(--text)]">Reponses generees ({responses.length})</h4>
+          {responses.map((r) => (
+            <div key={r.id} className="glass-card p-5 flex flex-col gap-3">
+              <div className="text-xs text-[var(--text-muted)] border-l-2 border-[var(--border)] pl-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Stars count={r.review_rating || 5} />
+                  <span className="font-medium text-[var(--text)]">{r.review_author || 'Client'}</span>
+                </div>
+                <p className="italic">{r.review_text}</p>
+              </div>
+              {editingId === r.id ? (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    rows={4}
+                    className="w-full px-2 py-1 rounded bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm resize-none"
+                  />
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => handleSaveEdit(r)} className="text-xs px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white cursor-pointer">Enregistrer</button>
+                    <button onClick={() => setEditingId(null)} className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] cursor-pointer text-[var(--text)]">Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                  <p className="text-xs text-green-400 font-medium mb-1">Reponse generee par IA</p>
+                  <p className="text-sm text-[var(--text)] whitespace-pre-wrap">{r.response_text}</p>
+                </div>
+              )}
+              {editingId !== r.id && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => handleCopy(r)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-white/5 cursor-pointer text-[var(--text)]"
+                  >
+                    {copiedId === r.id ? 'Copie !' : 'Copier la reponse'}
+                  </button>
+                  <button
+                    onClick={() => { setEditingId(r.id); setEditText(r.response_text); }}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-white/5 cursor-pointer text-[var(--text)]"
+                  >
+                    Modifier
+                  </button>
+                  <button
+                    onClick={() => handleDelete(r)}
+                    className="text-xs px-3 py-1.5 rounded-lg text-red-400 border border-red-500/30 hover:bg-red-500/10 cursor-pointer"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
