@@ -336,10 +336,14 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
       setLoadingLocs(true);
       setError(null);
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const authHeaders: Record<string, string> = session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : {};
         // If we have account already, skip account fetch
         let accountId = client?.gmb_account_id || selectedAccountId;
         if (!accountId) {
-          const aRes = await fetch('/api/google/accounts');
+          const aRes = await fetch('/api/google/accounts', { headers: authHeaders });
           const aJson = await aRes.json();
           if (!aRes.ok) throw new Error(aJson.error || 'accounts_error');
           setAccounts(aJson.accounts || []);
@@ -349,7 +353,7 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
           }
         }
         if (accountId) {
-          const lRes = await fetch(`/api/google/locations?accountId=${encodeURIComponent(accountId)}`);
+          const lRes = await fetch(`/api/google/locations?accountId=${encodeURIComponent(accountId)}`, { headers: authHeaders });
           const lJson = await lRes.json();
           if (!lRes.ok) throw new Error(lJson.error || 'locations_error');
           setLocations(lJson.locations || []);
@@ -367,7 +371,11 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
     setLoadingLocs(true);
     setError(null);
     try {
-      const lRes = await fetch(`/api/google/locations?accountId=${encodeURIComponent(accountId)}`);
+      const { data: { session } } = await supabase.auth.getSession();
+      const authHeaders: Record<string, string> = session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : {};
+      const lRes = await fetch(`/api/google/locations?accountId=${encodeURIComponent(accountId)}`, { headers: authHeaders });
       const lJson = await lRes.json();
       if (!lRes.ok) throw new Error(lJson.error || 'locations_error');
       setLocations(lJson.locations || []);
@@ -386,9 +394,13 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
     setError(null);
     try {
       const accountName = sessionStorage.getItem('gmb_account_name') || selectedAccountId;
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/google/locations/select', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({
           accountId: selectedAccountId,
           accountName,
@@ -411,7 +423,11 @@ function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh:
     if (!confirm('Deconnecter votre fiche Google ? Vous devrez la reconnecter pour reactiver les fonctionnalites.')) return;
     setDisconnecting(true);
     try {
-      await fetch('/api/auth/google/disconnect', { method: 'POST' });
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch('/api/auth/google/disconnect', {
+        method: 'POST',
+        headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {},
+      });
       onRefresh();
     } finally {
       setDisconnecting(false);

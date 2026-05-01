@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '../../../../lib/supabase-server';
+import { getApiUser } from '../../../../lib/auth-server';
 
 export async function POST(req: Request) {
-  const supabase = await getServerSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
+  const ctx = await getApiUser(req);
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const { userId, supabase } = ctx;
 
   let body: { accountId?: string; accountName?: string; locationId?: string; locationName?: string };
   try {
@@ -28,10 +26,10 @@ export async function POST(req: Request) {
       gmb_location_id: locationId,
       gmb_location_name: locationName || locationId,
     })
-    .eq('id', user.id);
+    .eq('id', userId);
 
   if (error) {
-    return NextResponse.json({ error: 'db_error' }, { status: 500 });
+    return NextResponse.json({ error: 'db_error', detail: error.message }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
 }

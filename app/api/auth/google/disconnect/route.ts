@@ -1,18 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '../../../../lib/supabase-server';
+import { getApiUser } from '../../../../lib/auth-server';
 import { revokeToken } from '../../../../lib/google-oauth';
 
-export async function POST() {
-  const supabase = await getServerSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
+export async function POST(req: Request) {
+  const ctx = await getApiUser(req);
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const { userId, supabase } = ctx;
 
   const { data: client } = await supabase
     .from('clients')
     .select('google_access_token, google_refresh_token')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single();
 
   if (client?.google_refresh_token) {
@@ -34,10 +32,10 @@ export async function POST() {
       gmb_location_name: null,
       gmb_connected_at: null,
     })
-    .eq('id', user.id);
+    .eq('id', userId);
 
   if (error) {
-    return NextResponse.json({ error: 'db_error' }, { status: 500 });
+    return NextResponse.json({ error: 'db_error', detail: error.message }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
 }

@@ -1,18 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '../../../lib/supabase-server';
+import { getApiUser } from '../../../lib/auth-server';
 import { getValidAccessToken } from '../../../lib/google-oauth';
 
-export async function GET() {
-  const supabase = await getServerSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
+export async function GET(req: Request) {
+  const ctx = await getApiUser(req);
+  if (!ctx) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  const { userId, supabase } = ctx;
 
   const { data: client } = await supabase
     .from('clients')
     .select('id, google_access_token, google_refresh_token, google_token_expires_at')
-    .eq('id', user.id)
+    .eq('id', userId)
     .single();
 
   if (!client || !client.google_refresh_token) {
@@ -30,7 +28,7 @@ export async function GET() {
     if (!res.ok) {
       const txt = await res.text();
       console.error('accounts fetch error:', res.status, txt);
-      return NextResponse.json({ error: 'google_api_error', status: res.status }, { status: 500 });
+      return NextResponse.json({ error: 'google_api_error', status: res.status, detail: txt }, { status: 500 });
     }
     const json = await res.json();
     return NextResponse.json({ accounts: json.accounts || [] });
