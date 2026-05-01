@@ -199,3 +199,37 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_location_id TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_location_name TEXT;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_connected_at TIMESTAMPTZ;
 
+-- ═══ Migration: Settings extra + Manager invite + Optimization tasks ═══
+
+-- Client settings extra fields
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS sector TEXT;
+
+-- Manager invitation tracking
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_invite_status TEXT DEFAULT 'pending' CHECK (manager_invite_status IN ('pending', 'sent', 'accepted', 'refused'));
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_invite_at TIMESTAMPTZ;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_accepted_at TIMESTAMPTZ;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_email_used TEXT;
+
+-- Optimization tasks (program)
+CREATE TABLE IF NOT EXISTS optimization_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  category TEXT NOT NULL,
+  task_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  why TEXT,
+  instructions TEXT,
+  content_to_copy TEXT,
+  priority INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'skipped')),
+  done_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_opt_tasks_client ON optimization_tasks(client_id);
+CREATE INDEX IF NOT EXISTS idx_opt_tasks_status ON optimization_tasks(status);
+
+ALTER TABLE optimization_tasks ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "tasks_own" ON optimization_tasks FOR ALL USING (auth.uid() = client_id);
+

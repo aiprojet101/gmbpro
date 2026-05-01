@@ -25,6 +25,12 @@ interface ClientData {
   email: string;
   plan: string;
   contact_name: string;
+  phone?: string | null;
+  description?: string | null;
+  sector?: string | null;
+  manager_invite_status?: string | null;
+  manager_invite_at?: string | null;
+  manager_accepted_at?: string | null;
   google_email?: string | null;
   gmb_account_id?: string | null;
   gmb_account_name?: string | null;
@@ -32,6 +38,31 @@ interface ClientData {
   gmb_location_name?: string | null;
   gmb_connected_at?: string | null;
 }
+
+interface OptTask {
+  id: string;
+  category: string;
+  task_type: string;
+  title: string;
+  why: string | null;
+  instructions: string | null;
+  content_to_copy: string | null;
+  priority: number;
+  status: 'pending' | 'done' | 'skipped';
+  done_at: string | null;
+  created_at: string;
+}
+
+const SECTORS = [
+  'restaurant', 'boulangerie', 'coiffeur', 'pharmacie', 'pizzeria',
+  'salon de beaute', 'garage automobile', 'fleuriste', 'cabinet dentaire',
+  'opticien', 'plombier', 'electricien', 'agence immobiliere', 'bar', 'hotel',
+  'cabinet medical', 'epicerie', 'boucherie', 'institut de beaute', 'auto-ecole',
+  'diagnostic immobilier', 'installateur panneaux solaires',
+  'installateur pompe a chaleur', 'onglerie', 'extension cils',
+  'reparation telephone', 'veterinaire', 'coach sportif', 'kinesitherapeute',
+  'osteopathe', 'avocat', 'notaire', 'toiletteur animaux', 'autre',
+];
 
 interface GmbAccount {
   name: string; // "accounts/123"
@@ -125,7 +156,9 @@ const QUESTIONS = [
 // ── Sidebar Items ──────────────────────────────────────────────────────────────
 const TABS = [
   { id: 'overview', label: 'Vue d\'ensemble', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
+  { id: 'programme', label: 'Mon programme', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
   { id: 'fiche', label: 'Ma fiche', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
+  { id: 'manager', label: 'Acces Google', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
   { id: 'history', label: 'Historique', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
   { id: 'posts', label: 'Posts Google', icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
   { id: 'reviews', label: 'Avis & Questions', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
@@ -1254,7 +1287,443 @@ function HistoryTab({ audits, loading }: { audits: AuditRow[]; loading: boolean 
   );
 }
 
-function SettingsTab({ client, onSignOut }: { client: ClientData | null; onSignOut: () => void }) {
+function SettingsTab({ client, onSignOut, onRefresh }: { client: ClientData | null; onSignOut: () => void; onRefresh: () => Promise<void> }) {
+  const router = useRouter();
+  const [businessName, setBusinessName] = useState(client?.business_name || '');
+  const [city, setCity] = useState(client?.city || '');
+  const [phone, setPhone] = useState(client?.phone || '');
+  const [description, setDescription] = useState(client?.description || '');
+  const [sector, setSector] = useState(client?.sector || '');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    setBusinessName(client?.business_name || '');
+    setCity(client?.city || '');
+    setPhone(client?.phone || '');
+    setDescription(client?.description || '');
+    setSector(client?.sector || '');
+  }, [client]);
+
+  const save = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch('/api/client/update', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          ...(session?.access_token ? { authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ business_name: businessName, city, phone, description, sector }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erreur');
+      setMsg({ type: 'ok', text: 'Modifications enregistrees.' });
+      await onRefresh();
+    } catch (e) {
+      setMsg({ type: 'err', text: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <h3 className="text-lg font-semibold text-[var(--text)]">Parametres</h3>
+
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Mon etablissement</h4>
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Nom commercial</label>
+            <input type="text" value={businessName} onChange={e => setBusinessName(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Ville</label>
+            <input type="text" value={city} onChange={e => setCity(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Telephone</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Description courte (max 500 caracteres)</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value.slice(0, 500))} rows={4} className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm resize-none" />
+            <p className="text-xs text-[var(--text-muted)] mt-1">{description.length}/500</p>
+          </div>
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Secteur</label>
+            <select value={sector} onChange={e => setSector(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] text-sm">
+              <option value="">— Choisir un secteur —</option>
+              {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <button onClick={save} disabled={saving} className="btn-primary text-sm !py-2 w-fit disabled:opacity-50">
+            {saving ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
+          {msg && (
+            <p className={`text-xs ${msg.type === 'ok' ? 'text-[var(--accent)]' : 'text-red-400'}`}>{msg.text}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Mon compte</h4>
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">Email</label>
+            <input type="email" value={client?.email || ''} readOnly className="w-full px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)] text-sm" />
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => router.push('/mot-de-passe-oublie')} className="btn-outline text-sm !py-2">
+              Changer mon mot de passe
+            </button>
+            <button onClick={onSignOut} className="text-sm text-red-400 border border-red-500/30 rounded-lg px-4 py-2 hover:bg-red-500/10 transition-colors cursor-pointer">
+              Se deconnecter
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Manager Invite Tab ────────────────────────────────────────────────────────
+
+function ManagerTab({ client, onRefresh }: { client: ClientData | null; onRefresh: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const status = (client?.manager_invite_status || 'pending') as 'pending' | 'sent' | 'accepted' | 'refused';
+
+  const updateStatus = async (newStatus: 'sent' | 'refused') => {
+    setBusy(true); setErr(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch('/api/client/manager-status', {
+        method: 'PATCH',
+        headers: {
+          'content-type': 'application/json',
+          ...(session?.access_token ? { authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erreur');
+      await onRefresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText('contact@gmbpro.fr');
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  const statusLabel: Record<typeof status, { text: string; color: string }> = {
+    pending: { text: 'En attente de votre invitation', color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
+    sent: { text: 'Invitation envoyee, en attente d\'acceptation', color: 'text-blue-400 bg-blue-500/10 border-blue-500/30' },
+    accepted: { text: 'Acces accorde — GmbPro gere votre fiche', color: 'text-[var(--accent)] bg-[var(--accent)]/10 border-[var(--accent)]/30' },
+    refused: { text: 'Invitation refusee', color: 'text-red-400 bg-red-500/10 border-red-500/30' },
+  };
+
+  const steps = [
+    'Connectez-vous a https://business.google.com avec le compte qui gere votre fiche',
+    'Selectionnez votre fiche d\'etablissement dans la liste',
+    'Cliquez sur "Parametres" (engrenage) en haut a droite',
+    'Cliquez sur "Personnes et niveaux d\'acces" (ou "People and access")',
+    'Cliquez sur "+ Ajouter" (ou "+ Add")',
+    'Collez l\'email "contact@gmbpro.fr"',
+    'Choisissez le role "Gestionnaire" (Manager) — IMPORTANT, pas "Owner"',
+    'Cliquez "Inviter"',
+    'Notre equipe acceptera l\'invitation sous 24h',
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h3 className="text-lg font-semibold text-[var(--text)]">Donnez-nous acces a votre fiche Google</h3>
+        <p className="text-sm text-[var(--text-muted)] mt-1">
+          GmbPro a besoin d&apos;un acces &laquo;&nbsp;Manager&nbsp;&raquo; a votre fiche pour publier vos posts et repondre a vos avis. Voici la procedure (5 minutes).
+        </p>
+      </div>
+
+      <div className={`glass-card p-4 border ${statusLabel[status].color}`}>
+        <p className="text-sm font-semibold">{statusLabel[status].text}</p>
+        {status === 'sent' && client?.manager_invite_at && (
+          <p className="text-xs mt-1 opacity-80">Envoyee le {new Date(client.manager_invite_at).toLocaleDateString('fr-FR')}</p>
+        )}
+      </div>
+
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-3">Email a inviter</h4>
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/30">
+          <code className="flex-1 text-base font-mono font-bold text-[var(--primary-light)]">contact@gmbpro.fr</code>
+          <button onClick={copy} className="btn-outline text-xs !py-1.5 !px-3">
+            {copied ? 'Copie !' : 'Copier'}
+          </button>
+        </div>
+      </div>
+
+      <div className="glass-card p-6">
+        <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Tutoriel pas a pas</h4>
+        <ol className="flex flex-col gap-3">
+          {steps.map((s, i) => (
+            <li key={i} className="flex gap-3">
+              <span className="shrink-0 w-6 h-6 rounded-full bg-[var(--primary)]/20 text-[var(--primary-light)] text-xs font-bold flex items-center justify-center">{i + 1}</span>
+              <span className="text-sm text-[var(--text)]">{s}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={() => updateStatus('sent')}
+          disabled={busy || status === 'accepted' || status === 'sent'}
+          className="btn-primary text-sm !py-3 !px-6 disabled:opacity-50"
+        >
+          {busy ? 'Enregistrement...' : 'J\'ai envoye l\'invitation'}
+        </button>
+        {status !== 'pending' && status !== 'accepted' && (
+          <button
+            onClick={() => updateStatus('refused')}
+            disabled={busy}
+            className="btn-outline text-sm !py-3 !px-6"
+          >
+            Annuler / refuser
+          </button>
+        )}
+      </div>
+      {err && <p className="text-xs text-red-400">{err}</p>}
+
+      <div className="glass-card p-4 border-[var(--border)] bg-[var(--surface)]/50">
+        <p className="text-xs text-[var(--text-muted)]">
+          <strong className="text-[var(--text)]">Securite :</strong> Vous restez <strong>proprietaire</strong> de votre fiche. Vous pouvez nous retirer l&apos;acces a tout moment depuis la meme page Google. Nous n&apos;avons jamais acces a votre Gmail, Drive ou autres services.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Programme d'optimisation Tab ──────────────────────────────────────────────
+
+function ProgrammeTab({ hasAudits }: { hasAudits: boolean }) {
+  const [tasks, setTasks] = useState<OptTask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ? { authorization: `Bearer ${session.access_token}` } : {};
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const headers = await authHeaders();
+      const r = await fetch('/api/optimization/list', { headers });
+      const j = await r.json();
+      setTasks(j.tasks || []);
+    } catch {}
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const generate = async () => {
+    setGenerating(true); setErr(null);
+    try {
+      const headers = { 'content-type': 'application/json', ...(await authHeaders()) };
+      const r = await fetch('/api/optimization/generate', { method: 'POST', headers });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erreur generation');
+      await load();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const regenerate = async () => {
+    if (!confirm('Supprimer le programme actuel et en generer un nouveau ?')) return;
+    setGenerating(true); setErr(null);
+    try {
+      const headers = await authHeaders();
+      await fetch('/api/optimization/delete', { method: 'DELETE', headers });
+      const r = await fetch('/api/optimization/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Erreur generation');
+      await load();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const updateTask = async (id: string, status: 'done' | 'pending' | 'skipped') => {
+    try {
+      const headers = { 'content-type': 'application/json', ...(await authHeaders()) };
+      await fetch(`/api/optimization/update?id=${id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status }),
+      });
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, status, done_at: status === 'done' ? new Date().toISOString() : null } : t));
+    } catch {}
+  };
+
+  const copyContent = async (id: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {}
+  };
+
+  const total = tasks.length;
+  const done = tasks.filter(t => t.status === 'done').length;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  const grouped = tasks.reduce<Record<string, OptTask[]>>((acc, t) => {
+    const k = t.category || 'autre';
+    if (!acc[k]) acc[k] = [];
+    acc[k].push(t);
+    return acc;
+  }, {});
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    informations: 'Informations',
+    description: 'Description',
+    photos: 'Photos',
+    posts: 'Posts',
+    avis: 'Avis',
+    categories: 'Categories',
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-lg font-semibold text-[var(--text)]">Mon programme d&apos;optimisation</h3>
+          <p className="text-sm text-[var(--text-muted)] mt-1">Taches generees par IA pour booster votre fiche Google.</p>
+        </div>
+        {tasks.length > 0 && (
+          <button onClick={regenerate} disabled={generating} className="btn-outline text-sm !py-2 disabled:opacity-50">
+            {generating ? 'Generation...' : 'Regenerer'}
+          </button>
+        )}
+      </div>
+
+      {tasks.length > 0 && (
+        <div className="glass-card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-[var(--text)]">{done} taches sur {total} completees</span>
+            <span className="text-sm font-bold text-[var(--primary-light)]">{pct}%</span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-[var(--surface)] overflow-hidden">
+            <div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="glass-card p-12 text-center">
+          <div className="w-8 h-8 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto" />
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="glass-card p-8 text-center flex flex-col gap-4">
+          {hasAudits ? (
+            <>
+              <p className="text-sm text-[var(--text)]">Pas encore de programme. Generez-en un base sur votre dernier audit.</p>
+              <button onClick={generate} disabled={generating} className="btn-primary text-sm !py-2 mx-auto disabled:opacity-50">
+                {generating ? 'Generation en cours...' : 'Generer mon programme'}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--text)]">Votre programme d&apos;optimisation sera genere apres votre premier audit GmbPro.</p>
+              <Link href="/scanner" className="btn-primary text-sm !py-2 mx-auto inline-block">Lancer un scan</Link>
+            </>
+          )}
+          {err && <p className="text-xs text-red-400">{err}</p>}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-6">
+          {err && <p className="text-xs text-red-400">{err}</p>}
+          {Object.entries(grouped).map(([cat, list]) => (
+            <div key={cat} className="flex flex-col gap-3">
+              <h4 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wider">{CATEGORY_LABELS[cat] || cat}</h4>
+              {list.map(t => (
+                <div key={t.id} className={`glass-card p-5 transition-opacity ${t.status === 'done' ? 'opacity-60' : ''}`}>
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${t.status === 'done' ? 'bg-[var(--accent)] text-white' : 'bg-[var(--primary)]/20 text-[var(--primary-light)]'}`}>
+                      {t.status === 'done' ? '✓' : t.priority}
+                    </div>
+                    <h5 className={`text-base font-semibold flex-1 ${t.status === 'done' ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text)]'}`}>{t.title}</h5>
+                  </div>
+                  {t.why && (
+                    <p className="text-xs italic text-[var(--text-muted)] mb-3 pl-9">{t.why}</p>
+                  )}
+                  {t.instructions && (
+                    <div className="pl-9 mb-3">
+                      <p className="text-xs font-semibold text-[var(--text)] mb-1">Comment :</p>
+                      <p className="text-xs text-[var(--text-muted)] whitespace-pre-line">{t.instructions}</p>
+                    </div>
+                  )}
+                  {t.content_to_copy && (
+                    <div className="pl-9 mb-3">
+                      <p className="text-xs font-semibold text-[var(--text)] mb-1">Texte a copier :</p>
+                      <div className="p-3 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex gap-2 items-start">
+                        <pre className="text-xs text-[var(--text)] whitespace-pre-wrap flex-1 font-sans">{t.content_to_copy}</pre>
+                        <button onClick={() => copyContent(t.id, t.content_to_copy!)} className="btn-outline text-xs !py-1 !px-2 shrink-0">
+                          {copiedId === t.id ? 'Copie' : 'Copier'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 pl-9">
+                    {t.status === 'done' ? (
+                      <button onClick={() => updateTask(t.id, 'pending')} className="btn-outline text-xs !py-1.5">
+                        Refaire
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={() => updateTask(t.id, 'done')} className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white font-medium hover:opacity-90">
+                          Marquer comme fait
+                        </button>
+                        <button onClick={() => updateTask(t.id, 'skipped')} className="btn-outline text-xs !py-1.5">
+                          Ignorer
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function _LegacySettingsTabPlaceholder({ client, onSignOut }: { client: ClientData | null; onSignOut: () => void }) {
   const planLabels: Record<string, string> = {
     starter: 'Starter — 29 euros (one-shot)',
     pro: 'Pro — 39 euros/mois',
@@ -1363,7 +1832,7 @@ export default function DashboardPage() {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
-        if (tab && ['overview', 'fiche', 'history', 'posts', 'reviews', 'positions', 'reports', 'settings'].includes(tab)) {
+        if (tab && ['overview', 'programme', 'fiche', 'manager', 'history', 'posts', 'reviews', 'positions', 'reports', 'settings'].includes(tab)) {
           setActiveTab(tab);
         }
       }
@@ -1394,13 +1863,15 @@ export default function DashboardPage() {
 
   const tabContent: Record<string, React.ReactNode> = {
     overview: <OverviewTab />,
+    programme: <ProgrammeTab hasAudits={audits.length > 0} />,
     fiche: <FicheTab client={client} onRefresh={loadClient} />,
+    manager: <ManagerTab client={client} onRefresh={loadClient} />,
     history: <HistoryTab audits={audits} loading={auditsLoading} />,
     posts: <PostsTab />,
     reviews: <ReviewsTab />,
     positions: <PositionsTab />,
     reports: <ReportsTab />,
-    settings: <SettingsTab client={client} onSignOut={handleSignOut} />,
+    settings: <SettingsTab client={client} onSignOut={handleSignOut} onRefresh={loadClient} />,
   };
 
   const initials = (client?.contact_name || client?.business_name || 'U').charAt(0).toUpperCase();
