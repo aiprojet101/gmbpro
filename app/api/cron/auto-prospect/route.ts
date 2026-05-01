@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { runProspectionScan } from '@/app/lib/prospection-core'
 import { scrapeProspectEmails } from '@/app/lib/email-scraper'
 import { getNextDiversified, getNextPair } from '@/app/lib/prospection-queue'
@@ -62,14 +63,24 @@ export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
-  const result = await runOnce()
-  return NextResponse.json(result)
+  // Sync mode: ?sync=1 attend la fin (pour test admin)
+  // Async mode (defaut): retourne immediatement, continue en background (cron-job.org timeout 30s)
+  if (req.nextUrl.searchParams.get('sync') === '1') {
+    const result = await runOnce()
+    return NextResponse.json(result)
+  }
+  waitUntil(runOnce().catch(err => console.error('[cron] runOnce error:', err)))
+  return NextResponse.json({ ok: true, message: 'Started in background' })
 }
 
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
-  const result = await runOnce()
-  return NextResponse.json(result)
+  if (req.nextUrl.searchParams.get('sync') === '1') {
+    const result = await runOnce()
+    return NextResponse.json(result)
+  }
+  waitUntil(runOnce().catch(err => console.error('[cron] runOnce error:', err)))
+  return NextResponse.json({ ok: true, message: 'Started in background' })
 }
