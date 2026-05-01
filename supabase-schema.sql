@@ -172,3 +172,19 @@ CREATE POLICY "campaigns_all" ON prospection_campaigns FOR ALL USING (true) WITH
 
 -- Apres avoir execute ce SQL dans Supabase, verifie que les nouvelles tables
 -- (prospects, prospection_campaigns) sont bien creees.
+
+-- ═══ Migration: tracking conversion email + region ═══
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS region TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS email_opened_at TIMESTAMPTZ;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS email_clicked_at TIMESTAMPTZ;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS email_bounced BOOLEAN DEFAULT false;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS resend_email_id TEXT;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS signup_at TIMESTAMPTZ;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS converted_at TIMESTAMPTZ;
+
+ALTER TABLE prospection_campaigns ADD COLUMN IF NOT EXISTS region TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_prospects_region ON prospects(region);
+CREATE INDEX IF NOT EXISTS idx_prospects_resend_email_id ON prospects(resend_email_id);
+

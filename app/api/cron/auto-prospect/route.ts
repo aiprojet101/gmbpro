@@ -1,57 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runProspectionScan } from '@/app/lib/prospection-core'
 import { scrapeProspectEmails } from '@/app/lib/email-scraper'
-import { getNextPair, CITIES, SECTORS } from '@/app/lib/prospection-queue'
+import { getNextDiversified, getNextPair } from '@/app/lib/prospection-queue'
 import { createClient } from '@supabase/supabase-js'
 
 export const maxDuration = 300
 
-async function getNextUnscannedPair() {
+async function getRunIndexFromDb(): Promise<number | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.GMBPRO_SUPABASE_URL || ''
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.GMBPRO_SUPABASE_ANON_KEY || ''
-  if (!supabaseUrl || !supabaseKey) return getNextPair()
-
+  const supabaseKey = process.env.GMBPRO_SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.GMBPRO_SUPABASE_ANON_KEY || ''
+  if (!supabaseUrl || !supabaseKey) return null
   const supabase = createClient(supabaseUrl, supabaseKey)
-  const { data } = await supabase
+  const { count, error } = await supabase
     .from('prospection_campaigns')
-    .select('city, sector')
+    .select('id', { count: 'exact', head: true })
     .like('name', '[AUTO]%')
+  if (error) return null
+  return count ?? 0
+}
 
-  const scanned = new Set((data || []).map(c => `${c.city}|${c.sector}`))
-
-  // Walk through queue index sequentially, return first not-yet-scanned pair
-  for (let i = 0; i < CITIES.length * SECTORS.length; i++) {
-    const cityIdx = Math.floor(i / SECTORS.length)
-    const sectorIdx = i % SECTORS.length
-    const city = CITIES[cityIdx]
-    const sector = SECTORS[sectorIdx]
-    if (!scanned.has(`${city}|${sector}`)) {
-      return { city, sector, index: i }
-    }
-  }
-  // All scanned, fallback to date-based (cycle restart)
-  return getNextPair()
+async function getNextDiversifiedFromDb() {
+  const runIndex = await getRunIndexFromDb()
+  if (runIndex == null) return getNextPair()
+  return getNextDiversified(runIndex)
 }
 
 function isAuthorized(req: NextRequest): boolean {
   const auth = req.headers.get('authorization') || ''
   if (process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`) return true
   if (process.env.GMBPRO_CRON_SECRET && auth === `Bearer ${process.env.GMBPRO_CRON_SECRET}`) return true
-  // Allow secret in query string too (some cron services don't support headers)
   const qsSecret = req.nextUrl.searchParams.get('secret')
   if (qsSecret && process.env.GMBPRO_CRON_SECRET && qsSecret === process.env.GMBPRO_CRON_SECRET) return true
   return false
 }
 
 async function runOnce() {
-  const pair = await getNextUnscannedPair()
+  const pair = await getNextDiversifiedFromDb()
   const startedAt = Date.now()
 
   const scan = await runProspectionScan({
     city: pair.city,
     sector: pair.sector,
+    region: pair.region,
     maxResults: 20,
-    campaignNamePrefix: '[AUTO]',
+    campaignNamePrefix: `[AUTO]`,
+    campaignNameSuffix: pair.region ? ` (${pair.region})` : '',
   })
 
   let scrape: { processed: number; found: number; total: number; error?: string } = {

@@ -83,22 +83,25 @@ export async function POST(req: NextRequest) {
   }
 
   const currentCount = (prospect.email_count as number) ?? 0
+  const nowIso = new Date().toISOString()
   const update: Record<string, unknown> = {
     status: 'emailed',
-    last_contacted_at: new Date().toISOString(),
+    last_contacted_at: nowIso,
     email,
     email_count: currentCount + 1,
-    updated_at: new Date().toISOString(),
+    email_sent_at: nowIso,
+    resend_email_id: messageId || null,
+    updated_at: nowIso,
   }
 
   const { error: updErr } = await supabase.from('prospects').update(update).eq('id', prospectId)
   if (updErr) {
-    // Email envoye, mais update echoue — tenter sans email_count si colonne manquante
+    // Email envoye, mais update echoue — tenter version reduite si colonnes manquantes
     const fallback: Record<string, unknown> = {
       status: 'emailed',
-      last_contacted_at: new Date().toISOString(),
+      last_contacted_at: nowIso,
       email,
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
     }
     await supabase.from('prospects').update(fallback).eq('id', prospectId)
   }

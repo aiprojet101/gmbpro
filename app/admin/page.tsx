@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-type Tab = 'overview' | 'clients' | 'prospection' | 'scans'
+type Tab = 'overview' | 'clients' | 'prospection' | 'performance' | 'scans'
 
 interface Prospect {
   id: string
@@ -104,6 +104,7 @@ export default function AdminPage() {
     { key: 'overview', label: "Vue d'ensemble" },
     { key: 'clients', label: 'Clients' },
     { key: 'prospection', label: 'Prospection' },
+    { key: 'performance', label: 'Performance' },
     { key: 'scans', label: 'Scans' },
   ]
 
@@ -200,6 +201,8 @@ export default function AdminPage() {
       {/* Prospection */}
       {tab === 'prospection' && <ProspectionTab />}
 
+      {tab === 'performance' && <PerformanceTab />}
+
       {/* Scans */}
       {tab === 'scans' && (
         <div className="glass-card p-4 overflow-x-auto">
@@ -270,7 +273,7 @@ function ProspectionTab() {
   const [scrapeMsg, setScrapeMsg] = useState('')
   const [cronRunning, setCronRunning] = useState(false)
   const [cronMsg, setCronMsg] = useState('')
-  const [nextPair, setNextPair] = useState<{ city: string; sector: string; index: number; total: number } | null>(null)
+  const [nextPair, setNextPair] = useState<{ city: string; sector: string; region?: string; regionLabel?: string; index: number; total: number } | null>(null)
   const [filterCity, setFilterCity] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterScore, setFilterScore] = useState<'all' | 'bad' | 'medium' | 'good'>('all')
@@ -689,7 +692,8 @@ function ProspectionTab() {
           <div className="pt-3 border-t border-[var(--border)] text-sm text-[var(--text-muted)]">
             <span className="font-semibold text-[var(--text)]">Prochaine campagne automatique :</span>{' '}
             <span className="capitalize">{nextPair.sector}</span> a {nextPair.city}{' '}
-            <span className="text-xs">({nextPair.index + 1}/{nextPair.total}, cron 03:00 UTC)</span>
+            {nextPair.regionLabel && <span className="text-xs">[{nextPair.regionLabel}]</span>}{' '}
+            <span className="text-xs">(run #{nextPair.index + 1}/{nextPair.total}, cron 03:00 UTC)</span>
           </div>
         )}
       </form>
@@ -1042,6 +1046,161 @@ function ProspectionTab() {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+interface AggStats {
+  key: string
+  prospects: number
+  emailsSent: number
+  opened: number
+  clicked: number
+  bounced: number
+  converted: number
+  openRate: number
+  clickRate: number
+  avgScore: number
+}
+
+interface ComboStats extends AggStats {
+  sector: string
+  region: string
+}
+
+interface PerfData {
+  bySector: AggStats[]
+  byRegion: AggStats[]
+  topCombos: ComboStats[]
+  totals: { prospects: number; emailsSent: number; opened: number; clicked: number; bounced: number; converted: number }
+}
+
+function PerformanceTab() {
+  const [data, setData] = useState<PerfData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<'prospects' | 'emailsSent' | 'openRate' | 'clickRate' | 'avgScore'>('prospects')
+
+  useEffect(() => {
+    const pwd = sessionStorage.getItem('gmbpro_admin') || ''
+    fetch('/api/admin/performance', { headers: { Authorization: `Bearer ${pwd}` } })
+      .then(async r => {
+        const j = await r.json()
+        if (!r.ok) {
+          setErr(j.error || 'Erreur')
+          if (j.hint) setHint(j.hint)
+        } else {
+          setData(j)
+        }
+      })
+      .catch(e => setErr(String(e)))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="text-[var(--text-muted)] text-sm">Chargement...</div>
+  if (err) return (
+    <div className="glass-card p-6 space-y-2">
+      <p className="text-red-400 text-sm">Erreur : {err}</p>
+      {hint && <p className="text-[var(--text-muted)] text-xs">{hint}</p>}
+    </div>
+  )
+  if (!data) return null
+
+  const sortRows = (rows: AggStats[]) => [...rows].sort((a, b) => (b[sortBy] as number) - (a[sortBy] as number))
+
+  const renderTable = (title: string, rows: AggStats[], firstColLabel: string) => (
+    <div className="glass-card p-4 space-y-3">
+      <h3 className="font-semibold">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border)]">
+              <th className="py-2 pr-3">{firstColLabel}</th>
+              <th className="py-2 pr-3 cursor-pointer" onClick={() => setSortBy('prospects')}>Prospects</th>
+              <th className="py-2 pr-3 cursor-pointer" onClick={() => setSortBy('emailsSent')}>Envoyes</th>
+              <th className="py-2 pr-3">Ouverts</th>
+              <th className="py-2 pr-3">Cliques</th>
+              <th className="py-2 pr-3 cursor-pointer" onClick={() => setSortBy('openRate')}>% Ouv.</th>
+              <th className="py-2 pr-3 cursor-pointer" onClick={() => setSortBy('clickRate')}>% Click</th>
+              <th className="py-2 pr-3 cursor-pointer" onClick={() => setSortBy('avgScore')}>Score moy.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortRows(rows).map(r => (
+              <tr key={r.key} className="border-b border-[var(--border)]/50">
+                <td className="py-2 pr-3 capitalize">{r.key}</td>
+                <td className="py-2 pr-3">{r.prospects}</td>
+                <td className="py-2 pr-3">{r.emailsSent}</td>
+                <td className="py-2 pr-3">{r.opened}</td>
+                <td className="py-2 pr-3">{r.clicked}</td>
+                <td className="py-2 pr-3">{r.openRate}%</td>
+                <td className="py-2 pr-3">{r.clickRate}%</td>
+                <td className="py-2 pr-3">{r.avgScore}</td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={8} className="py-3 text-[var(--text-muted)]">Aucune donnee.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+        {[
+          ['Prospects', data.totals.prospects],
+          ['Emails envoyes', data.totals.emailsSent],
+          ['Ouverts', data.totals.opened],
+          ['Cliques', data.totals.clicked],
+          ['Bounced', data.totals.bounced],
+          ['Convertis', data.totals.converted],
+        ].map(([l, v]) => (
+          <div key={l as string} className="glass-card p-4 text-center">
+            <div className="text-2xl font-bold text-[var(--primary-light)]">{v as number}</div>
+            <div className="text-xs text-[var(--text-muted)] mt-1">{l as string}</div>
+          </div>
+        ))}
+      </div>
+
+      {renderTable('Performance par secteur', data.bySector, 'Secteur')}
+      {renderTable('Performance par region', data.byRegion, 'Region')}
+
+      <div className="glass-card p-4 space-y-3">
+        <h3 className="font-semibold">Top 5 combos (secteur, region) — par taux de clic</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border)]">
+                <th className="py-2 pr-3">Secteur</th>
+                <th className="py-2 pr-3">Region</th>
+                <th className="py-2 pr-3">Envoyes</th>
+                <th className="py-2 pr-3">% Ouv.</th>
+                <th className="py-2 pr-3">% Click</th>
+                <th className="py-2 pr-3">Score moy.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.topCombos.map(c => (
+                <tr key={c.key} className="border-b border-[var(--border)]/50">
+                  <td className="py-2 pr-3 capitalize">{c.sector}</td>
+                  <td className="py-2 pr-3">{c.region}</td>
+                  <td className="py-2 pr-3">{c.emailsSent}</td>
+                  <td className="py-2 pr-3">{c.openRate}%</td>
+                  <td className="py-2 pr-3">{c.clickRate}%</td>
+                  <td className="py-2 pr-3">{c.avgScore}</td>
+                </tr>
+              ))}
+              {data.topCombos.length === 0 && (
+                <tr><td colSpan={6} className="py-3 text-[var(--text-muted)]">Pas encore assez de donnees (min 5 envois par combo).</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }

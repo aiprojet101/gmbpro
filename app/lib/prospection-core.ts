@@ -84,8 +84,10 @@ function getSupabase(): SupabaseClient | null {
 export interface ProspectionScanInput {
   city: string
   sector: string
+  region?: string
   maxResults?: number
   campaignNamePrefix?: string
+  campaignNameSuffix?: string
 }
 
 export interface ProspectionScanResult {
@@ -97,7 +99,7 @@ export interface ProspectionScanResult {
 }
 
 export async function runProspectionScan(input: ProspectionScanInput): Promise<ProspectionScanResult> {
-  const { city, sector, campaignNamePrefix } = input
+  const { city, sector, region, campaignNamePrefix, campaignNameSuffix } = input
   const apiKey = process.env.GMBPRO_GOOGLE_PLACES_KEY
   if (!apiKey) {
     return { campaignId: null, results: 0, found: 0, error: 'GMBPRO_GOOGLE_PLACES_KEY manquante' }
@@ -109,25 +111,37 @@ export async function runProspectionScan(input: ProspectionScanInput): Promise<P
   const limit = Math.min(Math.max(input.maxResults ?? 20, 1), 60)
   const supabase = getSupabase()
 
-  const campaignName = campaignNamePrefix
+  const baseName = campaignNamePrefix
     ? `${campaignNamePrefix} ${sector} - ${city}`
     : `${sector} - ${city}`
+  const campaignName = campaignNameSuffix ? `${baseName}${campaignNameSuffix}` : baseName
 
   let campaignId: string | null = null
   if (supabase) {
-    const { data } = await supabase
+    const baseInsert: Record<string, unknown> = {
+      name: campaignName,
+      city,
+      sector,
+      max_results: limit,
+      status: 'running',
+      started_at: new Date().toISOString(),
+    }
+    const { data, error: insErr } = await supabase
       .from('prospection_campaigns')
-      .insert({
-        name: campaignName,
-        city,
-        sector,
-        max_results: limit,
-        status: 'running',
-        started_at: new Date().toISOString(),
-      })
+      .insert({ ...baseInsert, region: region || null })
       .select('id')
       .single()
-    campaignId = data?.id || null
+    if (insErr) {
+      // Fallback sans region
+      const { data: data2 } = await supabase
+        .from('prospection_campaigns')
+        .insert(baseInsert)
+        .select('id')
+        .single()
+      campaignId = data2?.id || null
+    } else {
+      campaignId = data?.id || null
+    }
   }
 
   const query = `${sector} ${city}`
@@ -189,6 +203,7 @@ export async function runProspectionScan(input: ProspectionScanInput): Promise<P
         business_name: place.name || result.name,
         city,
         sector,
+        region: region || null,
         address: place.formatted_address || null,
         phone: place.formatted_phone_number || null,
         website: place.website || null,
@@ -209,8 +224,20 @@ export async function runProspectionScan(input: ProspectionScanInput): Promise<P
           .upsert(prospect, { onConflict: 'place_id' })
         if (!error) saved++
         else {
-          console.error('Upsert error:', error.message)
-          if (errors.length < 3) errors.push(`upsert: ${error.message}`)
+          // Fallback : si la colonne region n'existe pas encore, retenter sans
+          const isMissingCol = /column .* (region|does not exist)/i.test(error.message)
+          if (isMissingCol) {
+            const { region: _drop, ...prospectFallback } = prospect
+            void _drop
+            const { error: e2 } = await supabase
+              .from('prospects')
+              .upsert(prospectFallback, { onConflict: 'place_id' })
+            if (!e2) saved++
+            else if (errors.length < 3) errors.push(`upsert: ${e2.message}`)
+          } else {
+            console.error('Upsert error:', error.message)
+            if (errors.length < 3) errors.push(`upsert: ${error.message}`)
+          }
         }
       } else {
         if (errors.length < 3) errors.push('supabase_client_null')
