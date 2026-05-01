@@ -188,3 +188,14 @@ ALTER TABLE prospection_campaigns ADD COLUMN IF NOT EXISTS region TEXT;
 CREATE INDEX IF NOT EXISTS idx_prospects_region ON prospects(region);
 CREATE INDEX IF NOT EXISTS idx_prospects_resend_email_id ON prospects(resend_email_id);
 
+-- ═══ Migration: Google Business Profile OAuth tokens (per client) ═══
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS google_access_token TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS google_refresh_token TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS google_token_expires_at TIMESTAMPTZ;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS google_email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_account_id TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_account_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_location_id TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_location_name TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS gmb_connected_at TIMESTAMPTZ;
+

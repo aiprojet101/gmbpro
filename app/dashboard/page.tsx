@@ -24,6 +24,26 @@ interface ClientData {
   email: string;
   plan: string;
   contact_name: string;
+  google_email?: string | null;
+  gmb_account_id?: string | null;
+  gmb_account_name?: string | null;
+  gmb_location_id?: string | null;
+  gmb_location_name?: string | null;
+  gmb_connected_at?: string | null;
+}
+
+interface GmbAccount {
+  name: string; // "accounts/123"
+  accountName?: string;
+  type?: string;
+}
+
+interface GmbLocation {
+  name: string; // "locations/456"
+  title?: string;
+  storefrontAddress?: { addressLines?: string[]; locality?: string; postalCode?: string };
+  websiteUri?: string;
+  phoneNumbers?: { primaryPhone?: string };
 }
 
 // ── Mock Data (fallback until VPS workers populate real data) ─────────────────
@@ -296,25 +316,311 @@ function OverviewTab() {
   );
 }
 
-function FicheTab() {
+function FicheTab({ client, onRefresh }: { client: ClientData | null; onRefresh: () => void }) {
+  const [locations, setLocations] = useState<GmbLocation[] | null>(null);
+  const [accounts, setAccounts] = useState<GmbAccount[] | null>(null);
+  const [loadingLocs, setLoadingLocs] = useState(false);
+  const [selecting, setSelecting] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(client?.gmb_account_id || null);
+
+  const isConnected = !!client?.google_email;
+  const hasLocation = !!client?.gmb_location_id;
+
+  // Auto-load accounts/locations when connected but no location
+  useEffect(() => {
+    if (!isConnected || hasLocation) return;
+    (async () => {
+      setLoadingLocs(true);
+      setError(null);
+      try {
+        // If we have account already, skip account fetch
+        let accountId = client?.gmb_account_id || selectedAccountId;
+        if (!accountId) {
+          const aRes = await fetch('/api/google/accounts');
+          const aJson = await aRes.json();
+          if (!aRes.ok) throw new Error(aJson.error || 'accounts_error');
+          setAccounts(aJson.accounts || []);
+          if ((aJson.accounts || []).length === 1) {
+            accountId = aJson.accounts[0].name;
+            setSelectedAccountId(accountId);
+          }
+        }
+        if (accountId) {
+          const lRes = await fetch(`/api/google/locations?accountId=${encodeURIComponent(accountId)}`);
+          const lJson = await lRes.json();
+          if (!lRes.ok) throw new Error(lJson.error || 'locations_error');
+          setLocations(lJson.locations || []);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Erreur de chargement');
+      } finally {
+        setLoadingLocs(false);
+      }
+    })();
+  }, [isConnected, hasLocation, client?.gmb_account_id, selectedAccountId]);
+
+  const handleSelectAccount = async (accountId: string, accountName?: string) => {
+    setSelectedAccountId(accountId);
+    setLoadingLocs(true);
+    setError(null);
+    try {
+      const lRes = await fetch(`/api/google/locations?accountId=${encodeURIComponent(accountId)}`);
+      const lJson = await lRes.json();
+      if (!lRes.ok) throw new Error(lJson.error || 'locations_error');
+      setLocations(lJson.locations || []);
+      // Stash account info for later select call
+      sessionStorage.setItem('gmb_account_name', accountName || accountId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setLoadingLocs(false);
+    }
+  };
+
+  const handleSelectLocation = async (loc: GmbLocation) => {
+    if (!selectedAccountId) return;
+    setSelecting(loc.name);
+    setError(null);
+    try {
+      const accountName = sessionStorage.getItem('gmb_account_name') || selectedAccountId;
+      const res = await fetch('/api/google/locations/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: selectedAccountId,
+          accountName,
+          locationId: loc.name,
+          locationName: loc.title,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        throw new Error(j.error || 'select_error');
+      }
+      onRefresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+      setSelecting(null);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm('Deconnecter votre fiche Google ? Vous devrez la reconnecter pour reactiver les fonctionnalites.')) return;
+    setDisconnecting(true);
+    try {
+      await fetch('/api/auth/google/disconnect', { method: 'POST' });
+      onRefresh();
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const formatLocationAddress = (loc: GmbLocation): string => {
+    const a = loc.storefrontAddress;
+    if (!a) return '';
+    const lines = a.addressLines || [];
+    return [...lines, [a.postalCode, a.locality].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  };
+
+  // ─── State 1: Not connected ───
+  if (!isConnected) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="glass-card p-8 text-center">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, var(--primary), var(--accent))' }}>
+            <svg className="w-9 h-9 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </div>
+          <h3 className="text-2xl font-bold text-[var(--text)] mb-3">Connectez votre fiche Google</h3>
+          <p className="text-sm text-[var(--text-muted)] max-w-lg mx-auto mb-6">
+            GmbPro a besoin d&apos;acceder a votre fiche Google My Business pour l&apos;optimiser automatiquement, publier vos posts, et repondre a vos avis.
+          </p>
+          <a href="/api/auth/google/start" className="btn-primary inline-flex items-center gap-2 !py-3 !px-6">
+            <svg className="w-5 h-5" viewBox="0 0 48 48">
+              <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+              <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+              <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0124 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
+              <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 01-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
+            </svg>
+            Connecter ma fiche Google
+          </a>
+          <p className="text-xs text-[var(--text-muted)] mt-6 max-w-md mx-auto">
+            Nous n&apos;avons acces qu&apos;a votre fiche Google Business Profile, jamais a votre Gmail, Drive, ou autres services Google.
+          </p>
+        </div>
+
+        <div className="glass-card p-5 border border-orange-500/20 bg-orange-500/5">
+          <p className="text-xs text-orange-300">
+            <strong>Mode test :</strong> L&apos;application est actuellement en validation Google. Seuls les comptes testeurs autorises peuvent se connecter pour le moment.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── State 2: Connected but no location selected ───
+  if (!hasLocation) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="glass-card p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-2 h-2 rounded-full bg-green-400" />
+            <p className="text-sm text-[var(--text)]">
+              Connecte avec <span className="font-semibold">{client?.google_email}</span>
+            </p>
+          </div>
+          <h3 className="text-xl font-bold text-[var(--text)] mt-3 mb-2">Selectionnez votre fiche</h3>
+          <p className="text-sm text-[var(--text-muted)]">
+            Choisissez la fiche Google Business Profile que GmbPro doit gerer.
+          </p>
+        </div>
+
+        {error && (
+          <div className="glass-card p-4 border border-red-500/30 bg-red-500/5">
+            <p className="text-sm text-red-400">Erreur : {error}</p>
+            <button onClick={onRefresh} className="text-xs text-[var(--primary-light)] hover:underline mt-2">Reessayer</button>
+          </div>
+        )}
+
+        {loadingLocs && (
+          <div className="glass-card p-10 text-center">
+            <div className="w-8 h-8 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-[var(--text-muted)]">Chargement de vos fiches Google...</p>
+          </div>
+        )}
+
+        {!loadingLocs && accounts && accounts.length > 1 && !selectedAccountId && (
+          <div className="glass-card p-6">
+            <h4 className="text-sm font-semibold text-[var(--text)] mb-4">Choisissez un compte Google Business</h4>
+            <div className="flex flex-col gap-2">
+              {accounts.map(a => (
+                <button
+                  key={a.name}
+                  onClick={() => handleSelectAccount(a.name, a.accountName)}
+                  className="text-left p-4 rounded-lg border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 transition-all cursor-pointer"
+                >
+                  <p className="text-sm font-medium text-[var(--text)]">{a.accountName || a.name}</p>
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">{a.type || 'Compte'}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!loadingLocs && locations && locations.length === 0 && (
+          <div className="glass-card p-8 text-center">
+            <p className="text-sm text-[var(--text)] font-medium mb-2">Aucune fiche trouvee</p>
+            <p className="text-sm text-[var(--text-muted)]">Ce compte Google ne possede aucune fiche Business Profile.</p>
+          </div>
+        )}
+
+        {!loadingLocs && locations && locations.length > 0 && (
+          <div className="glass-card p-6">
+            <h4 className="text-sm font-semibold text-[var(--text)] mb-4">{locations.length} fiche{locations.length > 1 ? 's' : ''} trouvee{locations.length > 1 ? 's' : ''}</h4>
+            <div className="flex flex-col gap-2">
+              {locations.map(loc => (
+                <button
+                  key={loc.name}
+                  onClick={() => handleSelectLocation(loc)}
+                  disabled={selecting !== null}
+                  className="text-left p-4 rounded-lg border border-[var(--border)] hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[var(--text)]">{loc.title || 'Sans nom'}</p>
+                      {formatLocationAddress(loc) && (
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">{formatLocationAddress(loc)}</p>
+                      )}
+                      {loc.phoneNumbers?.primaryPhone && (
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">{loc.phoneNumbers.primaryPhone}</p>
+                      )}
+                    </div>
+                    {selecting === loc.name ? (
+                      <div className="w-5 h-5 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <span className="text-xs text-[var(--primary-light)] font-medium">Selectionner →</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="glass-card p-5">
+          <button onClick={handleDisconnect} disabled={disconnecting} className="text-xs text-red-400 hover:underline">
+            {disconnecting ? 'Deconnexion...' : 'Annuler et deconnecter'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── State 3: Connected + location selected ───
+  const connectedDate = client?.gmb_connected_at
+    ? new Date(client.gmb_connected_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
+
   return (
-    <div className="glass-card p-6">
-      <h3 className="text-lg font-semibold text-[var(--text)] mb-6">Informations de votre fiche</h3>
-      <div className="flex flex-col gap-5">
-        {FICHE.map((f, i) => (
-          <div key={i} className="flex items-start justify-between pb-5 border-b border-[var(--border)] last:border-0 last:pb-0">
+    <div className="flex flex-col gap-6">
+      {/* Status banner */}
+      <div className="glass-card p-5 border border-green-500/20 bg-green-500/5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+            <div>
+              <p className="text-sm font-semibold text-[var(--text)]">Fiche connectee</p>
+              <p className="text-xs text-[var(--text-muted)]">
+                <span className="font-medium">{client?.gmb_location_name}</span> · via {client?.google_email}
+                {connectedDate && ` · depuis le ${connectedDate}`}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleDisconnect}
+            disabled={disconnecting}
+            className="text-xs text-red-400 border border-red-500/30 rounded-lg px-3 py-1.5 hover:bg-red-500/10 transition-colors cursor-pointer"
+          >
+            {disconnecting ? 'Deconnexion...' : 'Deconnecter'}
+          </button>
+        </div>
+      </div>
+
+      {/* Fiche info (real location info + placeholder details) */}
+      <div className="glass-card p-6">
+        <h3 className="text-lg font-semibold text-[var(--text)] mb-6">Informations de votre fiche</h3>
+        <div className="flex flex-col gap-5">
+          <div className="flex items-start justify-between pb-5 border-b border-[var(--border)]">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <ScoreDot score={f.score} />
-                <span className="text-sm font-semibold text-[var(--text)]">{f.section}</span>
+                <ScoreDot score="vert" />
+                <span className="text-sm font-semibold text-[var(--text)]">Nom</span>
               </div>
-              <p className="text-sm text-[var(--text-muted)] ml-4.5">{f.value}</p>
+              <p className="text-sm text-[var(--text-muted)] ml-4">{client?.gmb_location_name || '—'}</p>
             </div>
-            <button className="text-xs text-[var(--text-muted)] border border-[var(--border)] rounded-lg px-3 py-1.5 opacity-50 cursor-not-allowed" title="Bientot disponible">
-              Modifier
-            </button>
           </div>
-        ))}
+          {FICHE.slice(1).map((f, i) => (
+            <div key={i} className="flex items-start justify-between pb-5 border-b border-[var(--border)] last:border-0 last:pb-0">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <ScoreDot score={f.score} />
+                  <span className="text-sm font-semibold text-[var(--text)]">{f.section}</span>
+                </div>
+                <p className="text-sm text-[var(--text-muted)] ml-4">{f.value}</p>
+              </div>
+              <button className="text-xs text-[var(--text-muted)] border border-[var(--border)] rounded-lg px-3 py-1.5 opacity-50 cursor-not-allowed" title="Bientot disponible">
+                Modifier
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-[var(--text-muted)] mt-6 italic">
+          Les details complets (horaires, photos, attributs) seront synchronises lors du premier audit automatique.
+        </p>
       </div>
     </div>
   );
@@ -642,6 +948,15 @@ export default function DashboardPage() {
   const [audits, setAudits] = useState<AuditRow[]>([]);
   const [auditsLoading, setAuditsLoading] = useState(true);
 
+  const loadClient = async () => {
+    const clientData = await getClient();
+    if (clientData) {
+      setClient(clientData);
+      setBusinessName(clientData.business_name || BUSINESS_DEFAULT.name);
+      setBusinessCity(clientData.city || BUSINESS_DEFAULT.city);
+    }
+  };
+
   // Auth check + load client data
   useEffect(() => {
     (async () => {
@@ -650,13 +965,18 @@ export default function DashboardPage() {
         router.replace('/connexion');
         return;
       }
-      const clientData = await getClient();
-      if (clientData) {
-        setClient(clientData);
-        setBusinessName(clientData.business_name || BUSINESS_DEFAULT.name);
-        setBusinessCity(clientData.city || BUSINESS_DEFAULT.city);
-      }
+      await loadClient();
       setLoading(false);
+
+      // Handle URL params from OAuth callback
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab && ['overview', 'fiche', 'history', 'posts', 'reviews', 'positions', 'reports', 'settings'].includes(tab)) {
+          setActiveTab(tab);
+        }
+      }
+
       try {
         const rows = await getClientAudits();
         setAudits(rows as AuditRow[]);
@@ -683,7 +1003,7 @@ export default function DashboardPage() {
 
   const tabContent: Record<string, React.ReactNode> = {
     overview: <OverviewTab />,
-    fiche: <FicheTab />,
+    fiche: <FicheTab client={client} onRefresh={loadClient} />,
     history: <HistoryTab audits={audits} loading={auditsLoading} />,
     posts: <PostsTab />,
     reviews: <ReviewsTab />,
