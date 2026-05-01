@@ -16,6 +16,7 @@ export default function Legal() {
           <p>GmbPro - SASU en cours d&apos;immatriculation</p>
           <p>Adresse : France</p>
           <p>Email : contact@gmbpro.fr</p>
+          <p>Telephone : 07 43 34 11 17</p>
           <p>Directeur de la publication : Le president de la societe</p>
         </section>
         <section>

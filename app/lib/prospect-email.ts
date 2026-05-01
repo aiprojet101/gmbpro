@@ -91,6 +91,7 @@ export function generateProspectEmail(p: ProspectEmailInput): GeneratedEmail {
 
     <div style="text-align:center;margin-top:24px;color:#71717a;font-size:12px;line-height:1.6;">
       <p style="margin:0 0 8px;">GmbPro — SEO local automatise</p>
+      <p style="margin:0 0 8px;">contact@gmbpro.fr · 07 43 34 11 17</p>
       <p style="margin:0;">
         <a href="${unsubUrl}" style="color:#71717a;text-decoration:underline;">Se desabonner</a>
       </p>
@@ -115,6 +116,7 @@ A partir de 29 euros. Sans engagement.
 
 ---
 GmbPro — SEO local automatise
+contact@gmbpro.fr · 07 43 34 11 17
 Se desabonner : ${unsubUrl}`
 
   return { subject, html, text }
