@@ -21,11 +21,13 @@ export async function GET(req: Request) {
   const cookieStore = await cookies();
   const stateCookie = cookieStore.get('gmb_oauth_state')?.value;
   const userIdCookie = cookieStore.get('gmb_oauth_user')?.value;
+  const supabaseTokenCookie = cookieStore.get('gmb_oauth_supabase_token')?.value;
   if (!stateCookie || stateCookie !== state) {
     return NextResponse.redirect(new URL('/dashboard?gmb_error=invalid_state', req.url));
   }
   cookieStore.delete('gmb_oauth_state');
   cookieStore.delete('gmb_oauth_user');
+  cookieStore.delete('gmb_oauth_supabase_token');
 
   // Try server-side session first; fallback to user_id cookie set by /start
   let user = null as null | { id: string };
@@ -41,10 +43,13 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL('/connexion?next=/dashboard', req.url));
   }
 
-  // Use service-role-like (anon) client for DB writes (RLS allows owner via auth, but here we trust the cookie)
+  // Authenticate Supabase client with user's token (RLS auth.uid() works)
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.GMBPRO_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.GMBPRO_SUPABASE_ANON_KEY || ''
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.GMBPRO_SUPABASE_ANON_KEY || '',
+    supabaseTokenCookie
+      ? { global: { headers: { Authorization: `Bearer ${supabaseTokenCookie}` } } }
+      : undefined
   );
 
   try {

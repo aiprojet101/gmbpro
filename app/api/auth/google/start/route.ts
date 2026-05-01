@@ -10,6 +10,7 @@ export async function GET(req: Request) {
   let userId = user?.id;
 
   // Method 2: Fallback — accept access_token in query string (for client-side localStorage sessions)
+  let supabaseToken: string | null = null;
   if (!userId) {
     const url = new URL(req.url);
     const token = url.searchParams.get('token');
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
       if (!error && data.user) {
         user = data.user;
         userId = data.user.id;
+        supabaseToken = token;
       }
     }
   }
@@ -47,6 +49,15 @@ export async function GET(req: Request) {
     path: '/',
     maxAge: 600,
   });
+  if (supabaseToken) {
+    cookieStore.set('gmb_oauth_supabase_token', supabaseToken, {
+      httpOnly: true,
+      secure: !req.url.includes('localhost'),
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 600,
+    });
+  }
 
   const redirectUri = getRedirectUri(req);
   const authUrl = getAuthUrl(state, redirectUri);
