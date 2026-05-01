@@ -1,5 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual, createHmac } from "crypto";
+import { Resend } from "resend";
+import { generateWelcomeEmail } from "../../../lib/welcome-email";
+
+const FROM = "GmbPro <contact@gmbpro.fr>";
+
+function planAmount(plan: string | undefined): string {
+  if (plan === "starter") return "29€";
+  if (plan === "pro") return "39€/mois";
+  if (plan === "premium") return "59€/mois";
+  return "";
+}
+
+async function sendWelcomeEmail(opts: {
+  email: string;
+  business_name: string;
+  plan: string;
+}): Promise<void> {
+  const apiKey = process.env.GMBPRO_RESEND_API_KEY;
+  if (!apiKey) {
+    console.warn("[Webhook] GMBPRO_RESEND_API_KEY missing — welcome email skipped");
+    return;
+  }
+  const planNorm = (["starter", "pro", "premium"].includes(opts.plan)
+    ? opts.plan
+    : "starter") as "starter" | "pro" | "premium";
+  const { subject, html, text } = generateWelcomeEmail({
+    business_name: opts.business_name || "votre etablissement",
+    email: opts.email,
+    plan: planNorm,
+    amount: planAmount(planNorm),
+  });
+  try {
+    const resend = new Resend(apiKey);
+    const result = await resend.emails.send({
+      from: FROM,
+      to: [opts.email],
+      subject,
+      html,
+      text,
+    });
+    if (result.error) {
+      console.error("[Webhook] Welcome email Resend error:", result.error.message);
+    } else {
+      console.log("[Webhook] Welcome email sent:", result.data?.id);
+    }
+  } catch (e) {
+    console.error("[Webhook] Welcome email exception:", e instanceof Error ? e.message : e);
+  }
+}
 
 function verifyStripeSignature(payload: string, sigHeader: string, secret: string): boolean {
   const parts = sigHeader.split(",").reduce<Record<string, string>>((acc, part) => {
@@ -49,14 +98,21 @@ export async function POST(req: NextRequest) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
+      const email: string | undefined =
+        session.customer_email || session.customer_details?.email || session.metadata?.email;
+      const plan: string = session.metadata?.plan || "starter";
+      const business_name: string =
+        session.metadata?.businessName || session.metadata?.business_name || "";
       console.log("[Webhook] Nouveau client:", {
-        email: session.customer_email,
-        plan: session.metadata?.plan,
-        business: session.metadata?.businessName,
+        email,
+        plan,
+        business: business_name,
         city: session.metadata?.city,
       });
-      // TODO: send welcome email via Resend
-      // TODO: create customer record in DB
+      if (email) {
+        // Don't fail the webhook if email fails — log and continue
+        await sendWelcomeEmail({ email, business_name, plan });
+      }
       break;
     }
     case "customer.subscription.deleted": {

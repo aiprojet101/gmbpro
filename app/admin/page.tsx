@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-type Tab = 'overview' | 'clients' | 'prospection' | 'performance' | 'scans'
+type Tab = 'overview' | 'clients' | 'prospection' | 'performance' | 'scans' | 'manager'
 
 interface Prospect {
   id: string
@@ -106,6 +106,7 @@ export default function AdminPage() {
     { key: 'prospection', label: 'Prospection' },
     { key: 'performance', label: 'Performance' },
     { key: 'scans', label: 'Scans' },
+    { key: 'manager', label: 'Acces Manager' },
   ]
 
   const kpis = stats
@@ -202,6 +203,8 @@ export default function AdminPage() {
       {tab === 'prospection' && <ProspectionTab />}
 
       {tab === 'performance' && <PerformanceTab />}
+
+      {tab === 'manager' && <ManagerTab />}
 
       {/* Scans */}
       {tab === 'scans' && (
@@ -1087,6 +1090,160 @@ interface PerfData {
   byRegion: AggStats[]
   topCombos: ComboStats[]
   totals: { prospects: number; emailsSent: number; opened: number; clicked: number; bounced: number; converted: number }
+}
+
+interface ManagerClient {
+  id: string
+  business_name: string
+  email: string | null
+  phone: string | null
+  sector: string | null
+  city: string | null
+  manager_invite_status: 'sent' | 'accepted' | 'refused'
+  manager_invite_at: string | null
+  manager_accepted_at: string | null
+}
+
+function ManagerTab() {
+  const [rows, setRows] = useState<ManagerClient[]>([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState<string | null>(null)
+  const [updating, setUpdating] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    const pwd = sessionStorage.getItem('gmbpro_admin')
+    if (!pwd) return
+    setLoading(true)
+    setErr(null)
+    try {
+      const res = await fetch(`/api/admin/manager-status?authToken=${encodeURIComponent(pwd)}`)
+      const j = await res.json()
+      if (!res.ok) {
+        setErr(j.error || 'Erreur')
+      } else {
+        setRows(j.clients || [])
+      }
+    } catch {
+      setErr('Erreur reseau')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const updateStatus = async (id: string, status: 'accepted' | 'refused') => {
+    const pwd = sessionStorage.getItem('gmbpro_admin')
+    if (!pwd) return
+    setUpdating(id)
+    try {
+      const res = await fetch(`/api/admin/manager-status?clientId=${encodeURIComponent(id)}&authToken=${encodeURIComponent(pwd)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (res.ok) await load()
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-'
+
+  const statusBadge = (s: string) => {
+    if (s === 'accepted') return <span className="text-xs px-2 py-1 rounded bg-green-500/15 text-green-300 border border-green-500/30">Accepte</span>
+    if (s === 'sent') return <span className="text-xs px-2 py-1 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30">En attente</span>
+    if (s === 'refused') return <span className="text-xs px-2 py-1 rounded bg-red-500/15 text-red-300 border border-red-500/30">Refuse</span>
+    return <span className="text-xs px-2 py-1 rounded bg-[var(--surface-elevated)]">{s}</span>
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-[var(--text-muted)]">
+          Clients ayant envoye une invitation Manager. Acceptez sur <a href="https://business.google.com" target="_blank" rel="noopener noreferrer" className="text-[var(--primary-light)] underline">business.google.com</a> puis marquez accepte ici.
+        </p>
+        <button onClick={load} className="text-sm text-[var(--text-muted)] hover:text-[var(--text)]">Rafraichir</button>
+      </div>
+
+      <div className="glass-card p-4 overflow-x-auto">
+        {loading ? (
+          <p className="text-center py-8 text-[var(--text-muted)]">Chargement...</p>
+        ) : err ? (
+          <p className="text-center py-8 text-red-400">{err}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[var(--text-muted)] border-b border-[var(--border)]">
+                <th className="p-3">Etablissement</th>
+                <th className="p-3">Email</th>
+                <th className="p-3">Secteur</th>
+                <th className="p-3">Ville</th>
+                <th className="p-3">Statut</th>
+                <th className="p-3">Invite le</th>
+                <th className="p-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c, i) => (
+                <tr key={c.id} className={i % 2 === 0 ? 'bg-[var(--surface)]' : ''}>
+                  <td className="p-3 font-medium">{c.business_name || '-'}</td>
+                  <td className="p-3 text-xs">{c.email || '-'}</td>
+                  <td className="p-3">{c.sector || '-'}</td>
+                  <td className="p-3">{c.city || '-'}</td>
+                  <td className="p-3">{statusBadge(c.manager_invite_status)}</td>
+                  <td className="p-3 text-xs">{fmtDate(c.manager_invite_at)}</td>
+                  <td className="p-3">
+                    <div className="flex flex-col gap-1">
+                      {c.manager_invite_status === 'sent' && (
+                        <>
+                          <button
+                            onClick={() => updateStatus(c.id, 'accepted')}
+                            disabled={updating === c.id}
+                            className="text-xs text-green-400 hover:underline text-left disabled:opacity-50"
+                          >
+                            Marquer accepte
+                          </button>
+                          <button
+                            onClick={() => updateStatus(c.id, 'refused')}
+                            disabled={updating === c.id}
+                            className="text-xs text-red-400 hover:underline text-left disabled:opacity-50"
+                          >
+                            Marquer refuse
+                          </button>
+                        </>
+                      )}
+                      {c.manager_invite_status === 'accepted' && (
+                        <button
+                          onClick={() => updateStatus(c.id, 'refused')}
+                          disabled={updating === c.id}
+                          className="text-xs text-red-400 hover:underline text-left disabled:opacity-50"
+                        >
+                          Marquer refuse
+                        </button>
+                      )}
+                      {c.manager_invite_status === 'refused' && (
+                        <button
+                          onClick={() => updateStatus(c.id, 'accepted')}
+                          disabled={updating === c.id}
+                          className="text-xs text-green-400 hover:underline text-left disabled:opacity-50"
+                        >
+                          Marquer accepte
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr><td colSpan={7} className="p-6 text-center text-[var(--text-muted)]">Aucune invitation Manager pour le moment.</td></tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function PerformanceTab() {

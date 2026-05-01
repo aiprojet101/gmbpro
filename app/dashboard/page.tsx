@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getUser, getClient, getClientAudits, signOut } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import OnboardingWizard from '../components/OnboardingWizard';
 
 interface AuditRow {
   id: string;
@@ -31,6 +32,8 @@ interface ClientData {
   manager_invite_status?: string | null;
   manager_invite_at?: string | null;
   manager_accepted_at?: string | null;
+  onboarding_completed?: boolean | null;
+  onboarding_step?: number | null;
   google_email?: string | null;
   gmb_account_id?: string | null;
   gmb_account_name?: string | null;
@@ -1807,6 +1810,7 @@ export default function DashboardPage() {
   const [businessCity, setBusinessCity] = useState(BUSINESS_DEFAULT.city);
   const [audits, setAudits] = useState<AuditRow[]>([]);
   const [auditsLoading, setAuditsLoading] = useState(true);
+  const [forceWizard, setForceWizard] = useState<number | null>(null);
 
   const loadClient = async () => {
     const clientData = await getClient();
@@ -1835,6 +1839,11 @@ export default function DashboardPage() {
         if (tab && ['overview', 'programme', 'fiche', 'manager', 'history', 'posts', 'reviews', 'positions', 'reports', 'settings'].includes(tab)) {
           setActiveTab(tab);
         }
+        const stepParam = params.get('step');
+        if (stepParam) {
+          const n = parseInt(stepParam, 10);
+          if (n >= 1 && n <= 3) setForceWizard(n);
+        }
       }
 
       try {
@@ -1858,6 +1867,25 @@ export default function DashboardPage() {
           <p className="text-sm text-[var(--text-muted)]">Chargement...</p>
         </div>
       </div>
+    );
+  }
+
+  // Onboarding wizard: shown for new clients OR when ?step=X param is set
+  const shouldShowWizard = client && (forceWizard !== null || client.onboarding_completed === false);
+  if (shouldShowWizard && client) {
+    return (
+      <OnboardingWizard
+        client={client}
+        initialStep={forceWizard || client.onboarding_step || 1}
+        onComplete={async () => {
+          setForceWizard(null);
+          await loadClient();
+          if (typeof window !== 'undefined') {
+            window.history.replaceState({}, '', '/dashboard');
+          }
+        }}
+        onRefresh={loadClient}
+      />
     );
   }
 
