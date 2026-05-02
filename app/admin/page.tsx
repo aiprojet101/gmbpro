@@ -378,20 +378,33 @@ function ProspectionTab() {
     const pwd = sessionStorage.getItem('gmbpro_admin')
     if (!pwd) return
     setScrapingEmails(true)
-    setScrapeMsg('Recherche emails en cours... (peut prendre 30-50s)')
+    let totalFound = 0
+    let totalProcessed = 0
+    let batch = 0
+    const MAX_BATCHES = 30 // safety: max 30 batches × 10 = 300 prospects per session
     try {
-      const res = await fetch('/api/admin/scrape-prospect-emails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminPassword: pwd, limit: 10 }),
-      })
-      const json = await res.json()
-      if (res.ok) {
-        setScrapeMsg(`${json.found} emails trouves sur ${json.processed} sites visites`)
-        load()
-      } else {
-        setScrapeMsg(`Erreur : ${json.error || 'inconnue'}`)
+      while (batch < MAX_BATCHES) {
+        batch++
+        setScrapeMsg(`Lot ${batch} en cours... ${totalFound} emails trouves sur ${totalProcessed} sites`)
+        const res = await fetch('/api/admin/scrape-prospect-emails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adminPassword: pwd, limit: 10 }),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+          setScrapeMsg(`Erreur : ${json.error || 'inconnue'}`)
+          break
+        }
+        totalFound += json.found || 0
+        totalProcessed += json.processed || 0
+        // No more prospects to scrape
+        if ((json.processed || 0) === 0) break
+        // Small delay between batches
+        await new Promise(r => setTimeout(r, 500))
       }
+      setScrapeMsg(`Termine : ${totalFound} emails trouves sur ${totalProcessed} sites visites (${batch} lots)`)
+      load()
     } catch {
       setScrapeMsg('Erreur reseau')
     } finally {
