@@ -281,6 +281,8 @@ function ProspectionTab() {
   const [filterStatus, setFilterStatus] = useState('')
   const [filterScore, setFilterScore] = useState<'all' | 'bad' | 'medium' | 'good'>('all')
   const [sortEmailFirst, setSortEmailFirst] = useState(false)
+  const [sortBy, setSortBy] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(false)
 
@@ -300,13 +302,18 @@ function ProspectionTab() {
       if (filterScore === 'bad') params.set('scoreMax', '40')
       if (filterScore === 'medium') { params.set('scoreMin', '40'); params.set('scoreMax', '70') }
       if (filterScore === 'good') params.set('scoreMin', '70')
-      if (sortEmailFirst) params.set('sort', 'email_first')
+      if (sortBy) {
+        params.set('sortBy', sortBy)
+        params.set('sortDir', sortDir)
+      } else if (sortEmailFirst) {
+        params.set('sort', 'email_first')
+      }
       const res = await fetch(`/api/admin/prospects?${params.toString()}`)
       if (res.ok) setData(await res.json())
     } finally {
       setLoading(false)
     }
-  }, [page, filterCity, filterStatus, filterScore, sortEmailFirst])
+  }, [page, filterCity, filterStatus, filterScore, sortEmailFirst, sortBy, sortDir])
 
   useEffect(() => { load() }, [load])
 
@@ -795,21 +802,42 @@ function ProspectionTab() {
                     className="cursor-pointer"
                   />
                 </th>
-                <th className="p-3">Business</th>
-                <th className="p-3">Ville</th>
-                <th className="p-3">Secteur</th>
-                <th className="p-3">Score</th>
-                <th className="p-3">Note</th>
-                <th className="p-3">Avis</th>
-                <th
-                  className="p-3 cursor-pointer select-none hover:text-[var(--text)]"
-                  onClick={() => setSortEmailFirst(s => !s)}
-                  title="Trier les prospects avec email en premier"
-                >
-                  Email {sortEmailFirst ? '↓' : '↕'}
-                </th>
-                <th className="p-3">Statut</th>
-                <th className="p-3">Actions</th>
+                {(() => {
+                  const SortableTh = ({ label, col }: { label: string; col: string }) => {
+                    const active = sortBy === col
+                    const arrow = active ? (sortDir === 'asc' ? '↑' : '↓') : '↕'
+                    return (
+                      <th
+                        className={`p-3 cursor-pointer select-none hover:text-[var(--text)] ${active ? 'text-[var(--primary-light)]' : ''}`}
+                        onClick={() => {
+                          if (sortBy === col) {
+                            setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+                          } else {
+                            setSortBy(col)
+                            setSortDir('asc')
+                          }
+                          setSortEmailFirst(false)
+                          setPage(0)
+                        }}
+                      >
+                        {label} <span className="text-xs">{arrow}</span>
+                      </th>
+                    )
+                  }
+                  return (
+                    <>
+                      <SortableTh label="Business" col="business_name" />
+                      <SortableTh label="Ville" col="city" />
+                      <SortableTh label="Secteur" col="sector" />
+                      <SortableTh label="Score" col="global_score" />
+                      <SortableTh label="Note" col="rating" />
+                      <SortableTh label="Avis" col="review_count" />
+                      <SortableTh label="Email" col="email" />
+                      <SortableTh label="Statut" col="status" />
+                      <th className="p-3">Actions</th>
+                    </>
+                  )
+                })()}
               </tr>
             </thead>
             <tbody>

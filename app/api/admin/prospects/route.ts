@@ -29,7 +29,12 @@ export async function GET(req: NextRequest) {
   const scoreMin = req.nextUrl.searchParams.get('scoreMin')
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20'), 100)
   const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0')
-  const sort = req.nextUrl.searchParams.get('sort')
+  const sort = req.nextUrl.searchParams.get('sort') // legacy: 'email_first'
+  const sortBy = req.nextUrl.searchParams.get('sortBy') // new: city, sector, global_score, rating, review_count, email, status, business_name
+  const sortDir = req.nextUrl.searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc'
+
+  // Whitelist of sortable columns
+  const SORTABLE = new Set(['city', 'sector', 'global_score', 'rating', 'review_count', 'email', 'status', 'business_name'])
 
   let query = supabase.from('prospects').select('*', { count: 'exact' })
   if (city) query = query.ilike('city', `%${city}%`)
@@ -37,7 +42,18 @@ export async function GET(req: NextRequest) {
   if (scoreMax) query = query.lte('global_score', parseInt(scoreMax))
   if (scoreMin) query = query.gte('global_score', parseInt(scoreMin))
 
-  if (sort === 'email_first') {
+  if (sortBy && SORTABLE.has(sortBy)) {
+    // For email/sector/rating/review_count: nulls last
+    const nullablesLast = ['email', 'sector', 'rating', 'review_count']
+    query = query.order(sortBy, {
+      ascending: sortDir === 'asc',
+      nullsFirst: nullablesLast.includes(sortBy) ? false : undefined,
+    })
+    // Always tie-break by score asc
+    if (sortBy !== 'global_score') {
+      query = query.order('global_score', { ascending: true })
+    }
+  } else if (sort === 'email_first') {
     query = query.order('email', { ascending: true, nullsFirst: false }).order('global_score', { ascending: true })
   } else {
     query = query.order('global_score', { ascending: true })
