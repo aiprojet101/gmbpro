@@ -53,16 +53,17 @@ async function runOnce() {
     processed: 0, found: 0, total: 0,
   }
   if (!scan.error && scan.results > 0) {
-    const r = await scrapeProspectEmails({ limit: 10 })
+    // Scrape 20 to match the 20 scans (no backlog)
+    const r = await scrapeProspectEmails({ limit: 20 })
     scrape = { processed: r.processed, found: r.found, total: r.total, error: r.error }
   }
 
-  // Auto-send up to 10 prospection emails to scraped prospects with score < 70
+  // Auto-send up to 20 prospection emails (matches scrape rate)
   let autosend: { sent: number; errors: number; skipped: number; errorDetails?: string[] } = {
     sent: 0, errors: 0, skipped: 0,
   }
   try {
-    autosend = await autoSendProspectEmails({ limit: 10 })
+    autosend = await autoSendProspectEmails({ limit: 20 })
   } catch (e) {
     console.error('[cron] autoSend error:', e)
   }
