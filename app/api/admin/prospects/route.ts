@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
   const scoreMin = req.nextUrl.searchParams.get('scoreMin')
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20'), 100)
   const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0')
+  const sort = req.nextUrl.searchParams.get('sort')
 
   let query = supabase.from('prospects').select('*', { count: 'exact' })
   if (city) query = query.ilike('city', `%${city}%`)
@@ -36,9 +37,13 @@ export async function GET(req: NextRequest) {
   if (scoreMax) query = query.lte('global_score', parseInt(scoreMax))
   if (scoreMin) query = query.gte('global_score', parseInt(scoreMin))
 
-  const { data, count, error } = await query
-    .order('global_score', { ascending: true })
-    .range(offset, offset + limit - 1)
+  if (sort === 'email_first') {
+    query = query.order('email', { ascending: true, nullsFirst: false }).order('global_score', { ascending: true })
+  } else {
+    query = query.order('global_score', { ascending: true })
+  }
+
+  const { data, count, error } = await query.range(offset, offset + limit - 1)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 

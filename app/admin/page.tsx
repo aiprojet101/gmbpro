@@ -280,6 +280,7 @@ function ProspectionTab() {
   const [filterCity, setFilterCity] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterScore, setFilterScore] = useState<'all' | 'bad' | 'medium' | 'good'>('all')
+  const [sortEmailFirst, setSortEmailFirst] = useState(false)
   const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(false)
 
@@ -299,12 +300,13 @@ function ProspectionTab() {
       if (filterScore === 'bad') params.set('scoreMax', '40')
       if (filterScore === 'medium') { params.set('scoreMin', '40'); params.set('scoreMax', '70') }
       if (filterScore === 'good') params.set('scoreMin', '70')
+      if (sortEmailFirst) params.set('sort', 'email_first')
       const res = await fetch(`/api/admin/prospects?${params.toString()}`)
       if (res.ok) setData(await res.json())
     } finally {
       setLoading(false)
     }
-  }, [page, filterCity, filterStatus, filterScore])
+  }, [page, filterCity, filterStatus, filterScore, sortEmailFirst])
 
   useEffect(() => { load() }, [load])
 
@@ -441,7 +443,6 @@ function ProspectionTab() {
 
   // Bulk send state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [sortEmailFirst, setSortEmailFirst] = useState(false)
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; currentName: string } | null>(null)
   const [bulkResult, setBulkResult] = useState<{ sent: number; errors: number } | null>(null)
@@ -799,9 +800,7 @@ function ProspectionTab() {
               </tr>
             </thead>
             <tbody>
-              {((sortEmailFirst
-                ? [...(data?.prospects || [])].sort((a, b) => (b.email ? 1 : 0) - (a.email ? 1 : 0))
-                : (data?.prospects || []))).map((p, i) => {
+              {(data?.prospects || []).map((p, i) => {
                 const statusIcon = p.status === 'emailed' ? '🟢' : p.status === 'rejected' ? '🔴' : '⚪'
                 const statusLabel = p.status === 'emailed' && p.last_contacted_at
                   ? `emailed (${fmtDate(p.last_contacted_at)})`
