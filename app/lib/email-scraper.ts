@@ -268,6 +268,7 @@ export async function scrapeProspectEmails(input: ScrapeEmailsInput): Promise<Sc
       .from('prospects')
       .select('id, business_name, website, email')
       .is('email', null)
+      .is('email_scraped_at', null)
       .not('website', 'is', null)
       .limit(limit)
     if (error) return { processed: 0, found: 0, total: 0, results: [], error: error.message }
@@ -285,15 +286,19 @@ export async function scrapeProspectEmails(input: ScrapeEmailsInput): Promise<Sc
     try {
       const r = await scrapeProspect(p, deadline)
       results.push(r)
-      if (r.email) {
-        found++
-        try {
-          await supabase
-            .from('prospects')
-            .update({ email: r.email, updated_at: new Date().toISOString() })
-            .eq('id', p.id)
-        } catch {}
-      }
+      const nowIso = new Date().toISOString()
+      // Always mark as scraped (success or not) to avoid re-processing
+      try {
+        await supabase
+          .from('prospects')
+          .update({
+            email: r.email || null,
+            email_scraped_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('id', p.id)
+      } catch {}
+      if (r.email) found++
     } catch (e) {
       results.push({
         prospectId: p.id,
