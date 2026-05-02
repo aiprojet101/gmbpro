@@ -1063,27 +1063,47 @@ function ProspectionTab() {
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center gap-2">
+      {totalPages > 1 && (() => {
+        const current = page + 1
+        const last = totalPages
+        const pages: (number | '...')[] = []
+        const add = (n: number) => { if (!pages.includes(n)) pages.push(n) }
+
+        add(1)
+        if (current > 4) pages.push('...')
+        for (let i = Math.max(2, current - 1); i <= Math.min(last - 1, current + 1); i++) add(i)
+        if (current < last - 3) pages.push('...')
+        if (last > 1) add(last)
+
+        const btn = (label: string | number, target: number, disabled = false, active = false) => (
           <button
-            onClick={() => setPage(p => Math.max(0, p - 1))}
-            disabled={page === 0}
-            className="px-3 py-1 rounded bg-[var(--surface)] border border-[var(--border)] text-sm disabled:opacity-50"
+            key={`${label}-${target}`}
+            onClick={() => setPage(target)}
+            disabled={disabled}
+            className={`min-w-[38px] h-9 px-2 rounded-lg text-sm font-medium transition-colors ${
+              active
+                ? 'bg-[var(--primary)] text-[#0A0E1A]'
+                : 'bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-elevated)] disabled:opacity-30 disabled:cursor-not-allowed'
+            }`}
           >
-            Precedent
+            {label}
           </button>
-          <span className="px-3 py-1 text-sm text-[var(--text-muted)]">
-            Page {page + 1} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage(p => p + 1)}
-            disabled={page >= totalPages - 1}
-            className="px-3 py-1 rounded bg-[var(--surface)] border border-[var(--border)] text-sm disabled:opacity-50"
-          >
-            Suivant
-          </button>
-        </div>
-      )}
+        )
+
+        return (
+          <div className="flex justify-center items-center gap-1.5 flex-wrap">
+            {btn('« Premiere', 0, current === 1)}
+            {btn('‹', page - 1, current === 1)}
+            {pages.map((p, i) =>
+              p === '...'
+                ? <span key={`dots-${i}`} className="px-2 text-[var(--text-muted)]">...</span>
+                : btn(p, p - 1, false, p === current)
+            )}
+            {btn('›', page + 1, current === last)}
+            {btn('Derniere »', last - 1, current === last)}
+          </div>
+        )
+      })()}
     </div>
   )
 }
