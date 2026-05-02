@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import CookieBanner from "./components/CookieBanner";
 
 const inter = Inter({
   variable: "--font-geist-sans",
@@ -146,7 +147,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="grain-overlay min-h-screen">{children}</body>
+      <body className="grain-overlay min-h-screen">
+        {children}
+        <CookieBanner />
+      </body>
     </html>
   );
 }
