@@ -441,6 +441,7 @@ function ProspectionTab() {
 
   // Bulk send state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [sortEmailFirst, setSortEmailFirst] = useState(false)
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number; currentName: string } | null>(null)
   const [bulkResult, setBulkResult] = useState<{ sent: number; errors: number } | null>(null)
@@ -786,13 +787,21 @@ function ProspectionTab() {
                 <th className="p-3">Score</th>
                 <th className="p-3">Note</th>
                 <th className="p-3">Avis</th>
-                <th className="p-3">Email</th>
+                <th
+                  className="p-3 cursor-pointer select-none hover:text-[var(--text)]"
+                  onClick={() => setSortEmailFirst(s => !s)}
+                  title="Trier les prospects avec email en premier"
+                >
+                  Email {sortEmailFirst ? '↓' : '↕'}
+                </th>
                 <th className="p-3">Statut</th>
                 <th className="p-3">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {(data?.prospects || []).map((p, i) => {
+              {((sortEmailFirst
+                ? [...(data?.prospects || [])].sort((a, b) => (b.email ? 1 : 0) - (a.email ? 1 : 0))
+                : (data?.prospects || []))).map((p, i) => {
                 const statusIcon = p.status === 'emailed' ? '🟢' : p.status === 'rejected' ? '🔴' : '⚪'
                 const statusLabel = p.status === 'emailed' && p.last_contacted_at
                   ? `emailed (${fmtDate(p.last_contacted_at)})`
