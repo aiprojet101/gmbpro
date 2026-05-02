@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getUser, getClient, getClientAudits, signOut } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import OnboardingWizard from '../components/OnboardingWizard';
+import ManagerAccessBanner from '../components/ManagerAccessBanner';
 
 interface AuditRow {
   id: string;
@@ -1838,6 +1839,8 @@ export default function DashboardPage() {
         const tab = params.get('tab');
         if (tab && ['overview', 'programme', 'fiche', 'manager', 'history', 'posts', 'reviews', 'positions', 'reports', 'settings'].includes(tab)) {
           setActiveTab(tab);
+        } else if (tab === 'acces-google') {
+          setActiveTab('manager');
         }
         const stepParam = params.get('step');
         if (stepParam) {
@@ -1968,6 +1971,19 @@ export default function DashboardPage() {
             <div className="w-8 h-8 rounded-full bg-[var(--primary)] flex items-center justify-center text-sm font-bold text-white">{initials}</div>
           </div>
         </header>
+
+        {/* Manager access banner (persistent until accepted) */}
+        <ManagerAccessBanner
+          status={client?.manager_invite_status}
+          onConfigure={() => {
+            setActiveTab('manager');
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.set('tab', 'acces-google');
+              window.history.replaceState({}, '', url.toString());
+            }
+          }}
+        />
 
         {/* Content */}
         <main className="p-6 max-w-6xl">

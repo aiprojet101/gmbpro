@@ -211,6 +211,10 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_invite_at TIMESTAMPTZ;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_accepted_at TIMESTAMPTZ;
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS manager_email_used TEXT;
 
+-- Manager relance tracking (cron auto)
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS last_relance_at TIMESTAMPTZ;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS relance_count INTEGER DEFAULT 0;
+
 -- Optimization tasks (program)
 CREATE TABLE IF NOT EXISTS optimization_tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

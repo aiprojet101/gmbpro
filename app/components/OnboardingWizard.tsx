@@ -173,6 +173,67 @@ function Step1Manager({
         </ol>
       </div>
 
+      {/* Comparaison Avec / Sans acces Manager */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-green-500/40 bg-green-500/5 p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center">
+              <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-bold text-green-300">Avec acces Manager <span className="text-xs font-normal text-green-400/80">(recommande)</span></h3>
+          </div>
+          <ul className="space-y-2 text-sm text-[var(--text)]">
+            {[
+              'Posts Google publies automatiquement chaque semaine',
+              'Reponses aux avis envoyees automatiquement (IA)',
+              'Optimisations appliquees sans intervention de votre part',
+              'Suivi de positions en temps reel',
+            ].map((line) => (
+              <li key={line} className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-green-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-green-300/80 italic pt-2 border-t border-green-500/20">
+            Vous gardez le controle, vous pouvez retirer l&apos;acces a tout moment.
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-yellow-500/15 border border-yellow-500/30 flex items-center justify-center">
+              <svg className="w-5 h-5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0L3.16 16.25A2 2 0 005 19z" />
+              </svg>
+            </div>
+            <h3 className="text-sm font-bold text-[var(--text-muted)]">Sans acces Manager</h3>
+          </div>
+          <ul className="space-y-2 text-sm text-[var(--text-muted)]">
+            {[
+              'Posts generes par IA, vous les copiez-collez',
+              'Reponses generees par IA, vous les copiez-collez',
+              "Programme d'optimisation a executer manuellement",
+              'Pas de suivi automatique des positions',
+            ].map((line) => (
+              <li key={line} className="flex items-start gap-2">
+                <svg className="w-4 h-4 text-yellow-500/70 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-[var(--text-muted)] italic pt-2 border-t border-[var(--border)]">
+            Plus de travail manuel, vous gardez 100% du controle.
+          </p>
+        </div>
+      </div>
+
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-[var(--text-muted)]">Statut :</span>
