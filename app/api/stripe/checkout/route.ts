@@ -77,6 +77,9 @@ export async function POST(req: NextRequest) {
       params.append("line_items[0][price_data][recurring][interval]", "month");
     }
 
+    // Allow promo codes (champ "Code promo" sur la page checkout)
+    params.append("allow_promotion_codes", "true");
+
     const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
       headers: {
