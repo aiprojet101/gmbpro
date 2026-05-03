@@ -18,6 +18,7 @@ type Prospect = {
   business_name: string
   website: string | null
   email: string | null
+  city?: string | null
 }
 
 export type ScrapeResult = {
@@ -178,9 +179,89 @@ function pickBestEmail(emails: string[], websiteDomain: string, businessName: st
   return scored[0].e
 }
 
+/* ─── Pages Jaunes scraper (fallback) ─── */
+
+const PJ_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+async function fetchPJ(url: string, timeoutMs = 6000): Promise<string | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': PJ_USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9',
+        'Accept-Language': 'fr-FR,fr;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+      },
+      redirect: 'follow',
+    })
+    if (!res.ok) return null
+    const t = await res.text()
+    return t.slice(0, 2_000_000)
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function scrapePagesJaunes(businessName: string, city: string, deadline: number): Promise<{ email: string; source: string } | null> {
+  if (!businessName || !city) return null
+  if (Date.now() >= deadline) return null
+
+  const slugify = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const q = `${slugify(businessName)} ${slugify(city)}`.trim()
+  const searchUrl = `https://www.pagesjaunes.fr/annuaire/chercherlespros?quoiqui=${encodeURIComponent(q)}&ou=${encodeURIComponent(city)}`
+
+  const searchHtml = await fetchPJ(searchUrl)
+  if (!searchHtml) return null
+
+  // Try to extract emails directly from search page
+  const directEmails = extractEmails(searchHtml)
+  const directBest = pickBestEmail(directEmails, '', businessName)
+  if (directBest) return { email: directBest, source: 'pagesjaunes:search' }
+
+  // Otherwise try to find a listing detail URL and scrape it
+  // PJ listing URLs: /pros/123456789 or /annuaire/societe/...
+  const linkRegex = /href="(\/pros\/\d+|\/annuaire\/societe\/[^"]+)"/g
+  const links: string[] = []
+  let lm: RegExpExecArray | null
+  while ((lm = linkRegex.exec(searchHtml)) !== null) {
+    if (links.length >= 3) break
+    links.push('https://www.pagesjaunes.fr' + lm[1])
+  }
+
+  for (const link of links) {
+    if (Date.now() >= deadline) break
+    const detailHtml = await fetchPJ(link)
+    if (!detailHtml) continue
+    const emails = extractEmails(detailHtml)
+    const best = pickBestEmail(emails, '', businessName)
+    if (best) return { email: best, source: `pagesjaunes:${link}` }
+  }
+
+  return null
+}
+
 async function scrapeProspect(p: Prospect, deadline: number): Promise<ScrapeResult> {
   const result: ScrapeResult = { prospectId: p.id, business_name: p.business_name, email: null, source: '' }
-  if (!p.website) { result.source = 'no-website'; return result }
+
+  // Fallback Pages Jaunes if no website OR website doesn't yield email
+  if (!p.website) {
+    if (p.city) {
+      const pjResult = await scrapePagesJaunes(p.business_name, p.city, deadline)
+      if (pjResult) {
+        result.email = pjResult.email
+        result.source = pjResult.source
+        return result
+      }
+    }
+    result.source = 'no-website-no-pj'
+    return result
+  }
 
   const baseUrl = normalizeUrl(p.website)
   if (!baseUrl) { result.source = 'invalid-url'; return result }
@@ -231,6 +312,15 @@ async function scrapeProspect(p: Prospect, deadline: number): Promise<ScrapeResu
     result.email = best.email
     result.source = best.source
   } else {
+    // Last resort: try Pages Jaunes
+    if (p.city && Date.now() < deadline) {
+      const pjResult = await scrapePagesJaunes(p.business_name, p.city, deadline)
+      if (pjResult) {
+        result.email = pjResult.email
+        result.source = pjResult.source
+        return result
+      }
+    }
     result.source = 'not-found'
   }
   return result
@@ -259,17 +349,16 @@ export async function scrapeProspectEmails(input: ScrapeEmailsInput): Promise<Sc
   if (input.prospectIds && input.prospectIds.length > 0) {
     const { data, error } = await supabase
       .from('prospects')
-      .select('id, business_name, website, email')
+      .select('id, business_name, website, email, city')
       .in('id', input.prospectIds.slice(0, 20))
     if (error) return { processed: 0, found: 0, total: 0, results: [], error: error.message }
     prospects = (data || []) as Prospect[]
   } else {
     const { data, error } = await supabase
       .from('prospects')
-      .select('id, business_name, website, email')
+      .select('id, business_name, website, email, city')
       .is('email', null)
       .is('email_scraped_at', null)
-      .not('website', 'is', null)
       .limit(limit)
     if (error) return { processed: 0, found: 0, total: 0, results: [], error: error.message }
     prospects = (data || []) as Prospect[]
