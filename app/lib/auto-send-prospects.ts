@@ -46,6 +46,7 @@ export async function autoSendProspectEmails(opts: { limit?: number } = {}): Pro
     .select('id, business_name, city, email, global_score, failed_count, rating, review_count, place_id, status')
     .eq('status', 'new')
     .not('email', 'is', null)
+    .is('unsubscribed_at', null)
     .lt('global_score', 70)
     .limit(limit)
 
@@ -69,14 +70,21 @@ export async function autoSendProspectEmails(opts: { limit?: number } = {}): Pro
         rating: p.rating,
         review_count: p.review_count,
         place_id: p.place_id,
+        prospect_id: p.id,
+        email: p.email,
       })
 
+      const unsubUrl = `https://gmbpro.fr/api/unsubscribe?id=${encodeURIComponent(p.id)}`
       const result = await resend.emails.send({
         from: FROM,
         to: [p.email],
         subject,
         html,
         text,
+        headers: {
+          'List-Unsubscribe': `<${unsubUrl}>, <mailto:contact@gmbpro.fr?subject=unsubscribe>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
       })
 
       if (result.error) {

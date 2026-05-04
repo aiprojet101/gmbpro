@@ -61,6 +61,8 @@ export async function POST(req: NextRequest) {
     rating: prospect.rating,
     review_count: prospect.review_count,
     place_id: prospect.place_id,
+    prospect_id: prospectId,
+    email: email,
   })
 
   const resend = new Resend(apiKey)

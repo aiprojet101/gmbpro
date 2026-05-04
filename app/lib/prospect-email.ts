@@ -9,6 +9,8 @@ export interface ProspectEmailInput {
   rating?: number | null
   review_count?: number | null
   place_id?: string | null
+  prospect_id?: string | null
+  email?: string | null
 }
 
 export interface GeneratedEmail {
@@ -21,7 +23,10 @@ export function generateProspectEmail(p: ProspectEmailInput): GeneratedEmail {
   const score = p.global_score ?? 0
   const placeParam = p.place_id ? `&placeId=${encodeURIComponent(p.place_id)}` : ''
   const scannerUrl = `https://gmbpro.fr/scanner/resultats?name=${encodeURIComponent(p.business_name)}&city=${encodeURIComponent(p.city)}${placeParam}`
-  const unsubUrl = `https://gmbpro.fr/desabonnement?email=prospect`
+  const unsubParams: string[] = []
+  if (p.prospect_id) unsubParams.push(`id=${encodeURIComponent(p.prospect_id)}`)
+  if (p.email) unsubParams.push(`email=${encodeURIComponent(p.email)}`)
+  const unsubUrl = `https://gmbpro.fr/desabonnement${unsubParams.length ? '?' + unsubParams.join('&') : ''}`
 
   const subject = `${p.business_name}, votre fiche Google a ${score}/100 — voici comment la corriger`
 
