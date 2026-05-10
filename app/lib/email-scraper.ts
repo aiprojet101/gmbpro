@@ -147,18 +147,40 @@ function extractEmails(html: string): string[] {
 
   return Array.from(found).filter(e => {
     if (e.length > 254) return false
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return false
+    const [local, domain] = e.split('@')
+    if (!local || !domain) return false
+    // Reject UUID-looking local parts (Doctolib exceptions etc.)
+    if (/^[a-f0-9]{16,}$/i.test(local)) return false
+    // Reject obviously fake demo domains
+    if (/^(email|domain|exemple|example|test|demo|votre|your|mon|sample)\.(fr|com|net)$/i.test(domain)) return false
+    // Reject domains with no proper TLD (must have at least 2 chars after final dot)
+    const tld = domain.split('.').pop() || ''
+    if (tld.length < 2 || tld.length > 8) return false
+    if (!/^[a-z]+$/i.test(tld)) return false
+    // Reject "st.louis", "ex.test" style — needs valid TLD
+    const VALID_TLDS = /^(fr|com|net|org|eu|info|biz|io|co|me|app|fr|paris|lyon|bzh|corsica|alsace|bretagne|quebec|swiss|de|be|ch|it|es|nl|uk)$/i
+    if (!VALID_TLDS.test(tld)) return false
+    return true
   })
 }
+
+// Domaines a banner systematiquement (faux positifs scraping)
+const BLACKLIST_DOMAINS = /(exceptions\.doctolib\.fr|weblow\.com|wix\.com|wixpress|godaddy|squarespace|shopify\.com|tumblr|webnode|jimdo|wordpress\.com|blogger\.com|github\.io|sentry\.io|cloudflare|amazonaws|googleusercontent|gstatic|firebaseapp|herokuapp|netlify|vercel\.app|appspot|microsoft\.com|apple\.com|google\.com|facebook\.com|instagram\.com|twitter\.com|linkedin\.com|youtube\.com|tiktok\.com)/i
 
 function scoreEmail(email: string, websiteDomain: string, businessName: string): number {
   const lc = email.toLowerCase()
   const local = lc.split('@')[0]
   const domain = lc.split('@')[1] || ''
 
-  if (/^(no.?reply|postmaster|abuse|webmaster|hostmaster)/i.test(local)) return -100
-  if (/example\.com|test\.com|sentry\.io|cloudflare|wixpress|wix\.com|godaddy|squarespace/.test(domain)) return -100
+  if (/^(no.?reply|postmaster|abuse|webmaster|hostmaster|mailer.?daemon|noreply|donotreply|admin|root|support@(?!gmbpro))/i.test(local)) return -100
+  if (BLACKLIST_DOMAINS.test(domain)) return -100
+  if (/example\.(com|fr|net)|test\.(com|fr|net)/.test(domain)) return -100
   if (/\.(png|jpg|jpeg|gif|webp|svg|css|js)$/i.test(domain)) return -100
+  // Local part suspicious (UUID-like, hash-like)
+  if (/^[a-f0-9]{12,}$/i.test(local)) return -100
+  // Generic placeholder names
+  if (/^(dupont|martin|exemple|example|test|demo|prenom|nom|firstname|lastname)/i.test(local)) return -50
 
   let score = 0
   const cleanWebDomain = websiteDomain.replace(/^www\./, '')
