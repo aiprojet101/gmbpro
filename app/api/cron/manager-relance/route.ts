@@ -16,6 +16,10 @@ function isAuthorized(req: NextRequest): boolean {
   return false
 }
 
+function isPaused(): boolean {
+  return process.env.GMBPRO_PAUSED === 'true' || process.env.GMBPRO_PAUSED === '1'
+}
+
 interface ClientRow {
   id: string
   email: string
@@ -105,6 +109,9 @@ export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
+  if (isPaused()) {
+    return NextResponse.json({ ok: true, paused: true, message: 'GMBPRO_PAUSED=true' })
+  }
   const result = await runRelance()
   return NextResponse.json(result)
 }
@@ -112,6 +119,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+  if (isPaused()) {
+    return NextResponse.json({ ok: true, paused: true, message: 'GMBPRO_PAUSED=true' })
   }
   const result = await runRelance()
   return NextResponse.json(result)

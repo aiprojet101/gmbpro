@@ -36,6 +36,11 @@ function isAuthorized(req: NextRequest): boolean {
   return false
 }
 
+// KILL SWITCH global — si GMBPRO_PAUSED=true sur Vercel, plus aucun cron tourne
+function isPaused(): boolean {
+  return process.env.GMBPRO_PAUSED === 'true' || process.env.GMBPRO_PAUSED === '1'
+}
+
 async function runOnce() {
   const pair = await getNextDiversifiedFromDb()
   const startedAt = Date.now()
@@ -75,6 +80,9 @@ export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
+  if (isPaused()) {
+    return NextResponse.json({ ok: true, paused: true, message: 'GMBPRO_PAUSED=true' })
+  }
   // Sync mode: ?sync=1 attend la fin (pour test admin)
   // Async mode (defaut): retourne immediatement, continue en background (cron-job.org timeout 30s)
   if (req.nextUrl.searchParams.get('sync') === '1') {
@@ -88,6 +96,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+  if (isPaused()) {
+    return NextResponse.json({ ok: true, paused: true, message: 'GMBPRO_PAUSED=true' })
   }
   if (req.nextUrl.searchParams.get('sync') === '1') {
     const result = await runOnce()
